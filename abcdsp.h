@@ -86,6 +86,9 @@ public:
     bool writeSpd(U32 devSpdNum, U32 devSpdReg, U32 devSpdRegData, U32 ctrl);
     bool readSpdDev(U32 devSpdNum, U32 devSpdReg, U32 spdCtrl, U32& devSpdRegData);
 
+    void specAdcSettings(struct app_params_t& params);
+    void specDacSettings(struct app_params_t& params);
+
     Fpga *FPGA();
     Memory *DDR3();
 

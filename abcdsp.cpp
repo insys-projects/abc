@@ -281,12 +281,8 @@ void abcdsp::dataFromAdc(struct app_params_t& params)
     RegPokeInd(ADC_TRD, 0x18, 0);
     IPC_delay(10);
 
-    //----- ADC speceific settings -------------
-    writeSpd(0x0, 0x1, 0x8, (1 << 12));
-    writeSpd(0x0, 0x3, (params.analogOffset >> 8) & 0x1, (1 << 12));
-    writeSpd(0x0, 0x4, (params.analogOffset & 0xFF), (1 << 12));
-    writeSpd(0x0, 0x5, 0x28, (1 << 12));
-    //------------------------------------------
+    fprintf(stderr, "Program special ADC settings\n");
+    specAdcSettings(params);
 
     fprintf(stderr, "Set ADC channels mask\n");
     RegPokeInd(ADC_TRD, 0x10, params.adcMask);
@@ -395,12 +391,8 @@ void abcdsp::dataFromAdcToMemAsMem(struct app_params_t& params)
 
     unsigned pass_counter = 0;
 
-    //----- ADC speceific settings -------------
-    writeSpd(0x0, 0x1, 0x8, (1 << 12));
-    writeSpd(0x0, 0x3, (params.analogOffset >> 8) & 0x1, (1 << 12));
-    writeSpd(0x0, 0x4, (params.analogOffset & 0xFF), (1 << 12));
-    writeSpd(0x0, 0x5, 0x28, (1 << 12));
-    //------------------------------------------
+    fprintf(stderr, "Program special ADC settings\n");
+    specAdcSettings(params);
 
     while(!exitFlag()) {
 
@@ -1241,6 +1233,22 @@ bool abcdsp::readSpdDev(U32 devSpdNum, U32 devSpdReg, U32 spdCtrl, U32& devSpdRe
     devSpdRegData = RegPeekInd(4, 0x206);
 
     return true;
+}
+
+//-----------------------------------------------------------------------------
+
+void abcdsp::specAdcSettings(struct app_params_t& params)
+{
+    writeSpd(0x0, 0x1, 0x8, (1 << 12));
+    writeSpd(0x0, 0x3, (params.analogOffset >> 8) & 0x1, (1 << 12));
+    writeSpd(0x0, 0x4, (params.analogOffset & 0xFF), (1 << 12));
+    writeSpd(0x0, 0x5, 0x28, (1 << 12));
+}
+
+//-----------------------------------------------------------------------------
+
+void abcdsp::specDacSettings(struct app_params_t& params)
+{
 }
 
 //-----------------------------------------------------------------------------
