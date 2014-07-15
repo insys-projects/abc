@@ -1220,7 +1220,7 @@ bool abcdsp::readSpdDev(U32 devSpdNum, U32 devSpdReg, U32 spdCtrl, U32& devSpdRe
     RegPokeInd(4, 0x205, devSpdReg);
 
     // посылаем команду чтения
-    RegPokeInd(4, 0x204, 0x1);
+    RegPokeInd(4, 0x204, spdCtrl|0x1);
 
     // ожидаем готовности тетрады
     status = 0;
