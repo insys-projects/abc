@@ -7,6 +7,7 @@
 #include "ctrlstrm.h"
 #include "memory.h"
 #include "nctable.h"
+#include "trdprog.h"
 
 #include <vector>
 #include <string>
@@ -83,11 +84,8 @@ public:
     void getFpgaTemperature(float& t);
     void checkMainDataStream(U32 dmaBlockSize, const std::vector<void*>& Buffers, bool width);
 
-    bool writeSpd(U32 devSpdNum, U32 devSpdReg, U32 devSpdRegData, U32 ctrl);
-    bool readSpdDev(U32 devSpdNum, U32 devSpdReg, U32 spdCtrl, U32& devSpdRegData);
-
     void specAdcSettings(struct app_params_t& params);
-    void specDacSettings(struct app_params_t& params);
+    bool specDacSettings(struct app_params_t& params);
 
     Fpga *FPGA();
     Memory *DDR3();
@@ -97,6 +95,7 @@ private:
     Fpga*                    m_fpga;
     BRDctrl_StreamCBufAlloc  m_sSCA;
     bool                     m_exit;
+    trdprog*                 m_trdprog;
 
     void createFpgaMemory();
     void deleteFpgaMemory();

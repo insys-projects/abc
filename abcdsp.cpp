@@ -32,6 +32,7 @@ abcdsp::abcdsp()
     fprintf(stderr, "====================== Open abcdsp ======================\n");
     m_exit = false;
     m_fpga = new Fpga(0);
+    m_trdprog = new trdprog(m_fpga, "dac.ini");
     fprintf(stderr, "========================================================\n");
 }
 
@@ -39,6 +40,7 @@ abcdsp::abcdsp()
 
 abcdsp::~abcdsp()
 {
+    if(m_trdprog) delete m_trdprog;
     if(m_fpga) delete m_fpga;
 }
 
@@ -239,12 +241,15 @@ bool abcdsp::writeBuffer(U32 DmaChan, IPC_handle file, int fpos)
 
 #define MAIN_TRD 0
 #define ADC_TRD  4
-#define MEM_TRD  5
+#define DAC_TRD  5
+#define MEM_TRD  6
 
 //-----------------------------------------------------------------------------
 
 void abcdsp::dataFromAdc(struct app_params_t& params)
 {
+//    specDacSettings(params);
+
     fprintf(stderr, "Start testing DMA: %d\n", params.dmaChannel);
     fprintf(stderr, "DMA information:\n" );
     infoDma();
@@ -1138,117 +1143,135 @@ void abcdsp::checkMainDataStream(U32 dmaBlockSize, const std::vector<void*>& Buf
 
 //-----------------------------------------------------------------------------
 
-bool abcdsp::writeSpd(U32 devSpdNum, U32 devSpdReg, U32 devSpdRegData, U32 spdCtrl)
-{
-    int timeout = 0;
-
-    // ожидаем готовности тетрады
-    U32 status = 0;
-    while(1) {
-        status = RegPeekDir(4,0);
-        if(status & 0x1)
-            break;
-        timeout++;
-        if(timeout > 100) {
-            fprintf(stderr, "%s(): TIMEOUT\n", __FUNCTION__);
-            return false;
-        }
-        IPC_delay(10);
-    }
-
-    // выбираем устройство
-    RegPokeInd(4, 0x203, devSpdNum);
-
-    // записываем адрес
-    RegPokeInd(4, 0x205, devSpdReg);
-
-    // записываем данные
-    RegPokeInd(4, 0x206, devSpdRegData);
-
-    // посылаем команду записи
-    RegPokeInd(4, 0x204, spdCtrl|0x2);
-
-    // ожидаем готовности тетрады
-    status = 0;
-    timeout = 0;
-    while(1) {
-        status = RegPeekDir(4,0);
-        if(status & 0x1)
-            break;
-        timeout++;
-        if(timeout > 100) {
-            fprintf(stderr, "%s(): TIMEOUT\n", __FUNCTION__);
-            return false;
-        }
-        IPC_delay(10);
-    }
-    return true;
-}
-
-//-----------------------------------------------------------------------------
-
-bool abcdsp::readSpdDev(U32 devSpdNum, U32 devSpdReg, U32 spdCtrl, U32& devSpdRegData)
-{
-    int timeout = 0;
-
-    // ожидаем готовности тетрады
-    U32 status = 0;
-    while(1) {
-        status = RegPeekDir(4,0);
-        if(status & 0x1)
-            break;
-        timeout++;
-        if(timeout > 100) {
-            fprintf(stderr, "%s(): TIMEOUT\n", __FUNCTION__);
-            return false;
-        }
-        IPC_delay(10);
-    }
-
-    // выбираем устройство
-    RegPokeInd(4, 0x203, devSpdNum);
-
-    // записываем адрес
-    RegPokeInd(4, 0x205, devSpdReg);
-
-    // посылаем команду чтения
-    RegPokeInd(4, 0x204, spdCtrl|0x1);
-
-    // ожидаем готовности тетрады
-    status = 0;
-    timeout = 0;
-    while(1) {
-        status = RegPeekDir(4,0);
-        if(status & 0x1)
-            break;
-        timeout++;
-        if(timeout > 100) {
-            fprintf(stderr, "%s(): TIMEOUT\n", __FUNCTION__);
-            return false;
-        }
-        IPC_delay(10);
-    }
-
-    // считываем данные
-    devSpdRegData = RegPeekInd(4, 0x206);
-
-    return true;
-}
-
-//-----------------------------------------------------------------------------
-
 void abcdsp::specAdcSettings(struct app_params_t& params)
 {
-    writeSpd(0x0, 0x1, 0x8, (1 << 12));
-    writeSpd(0x0, 0x3, (params.analogOffset >> 8) & 0x1, (1 << 12));
-    writeSpd(0x0, 0x4, (params.analogOffset & 0xFF), (1 << 12));
-    writeSpd(0x0, 0x5, 0x28, (1 << 12));
+    FPGA()->writeSpdDev(ADC_TRD, 0x0, 0x1, 0x8, (1 << 12));
+    FPGA()->writeSpdDev(ADC_TRD, 0x0, 0x3, (params.analogOffset >> 8) & 0x1, (1 << 12));
+    FPGA()->writeSpdDev(ADC_TRD, 0x0, 0x4, (params.analogOffset & 0xFF), (1 << 12));
+    FPGA()->writeSpdDev(ADC_TRD, 0x0, 0x5, 0x28, (1 << 12));
+/*
+    U32 val = 0;
+
+    FPGA()->readSpdDev(ADC_TRD, 0x0, 0x01, 0, val);
+    fprintf(stderr, "0x01: 0x%.2X\n", val);
+    FPGA()->readSpdDev(ADC_TRD, 0x0, 0x03, 0, val);
+    fprintf(stderr, "0x03: 0x%.2X\n", val);
+    FPGA()->readSpdDev(ADC_TRD, 0x0, 0x04, 0, val);
+    fprintf(stderr, "0x04: 0x%.2X\n", val);
+    FPGA()->readSpdDev(ADC_TRD, 0x0, 0x05, 0, val);
+    fprintf(stderr, "0x05: 0x%.2X\n", val);
+*/
 }
 
 //-----------------------------------------------------------------------------
 
-void abcdsp::specDacSettings(struct app_params_t& params)
+bool abcdsp::specDacSettings(struct app_params_t& params)
 {
+    U32 val = 0;
+/*
+    fprintf(stderr, "%s()\n", __FUNCTION__);
+
+    readSpdDev(DAC_TRD, 0x1, 0x00, 0, val);
+    fprintf(stderr, "0x00: 0x%.2X\n", val);
+
+    readSpdDev(DAC_TRD, 0x1, 0x01, 0, val);
+    fprintf(stderr, "0x01: 0x%.2X\n", val);
+
+    readSpdDev(DAC_TRD, 0x1, 0x02, 0, val);
+    fprintf(stderr, "0x02: 0x%.2X\n", val);
+
+    readSpdDev(DAC_TRD, 0x1, 0x33, 0, val);
+    fprintf(stderr, "0x33: 0x%.2X\n", val);
+*/
+    RegPokeInd(DAC_TRD, 0x1A, 0x1);
+
+    RegPokeInd(DAC_TRD, 0x18, 0x0);
+    RegPokeInd(DAC_TRD, 0x18, 0x1);
+    RegPokeInd(DAC_TRD, 0x18, 0x0);
+
+    FPGA()->readSpdDev(DAC_TRD, 0x1, 0x35, 0, val);
+    fprintf(stderr, "0x35: 0x%.2X\n", val);
+
+    FPGA()->writeSpdDev(DAC_TRD, 0x1, 0x00, 0x0);
+    FPGA()->writeSpdDev(DAC_TRD, 0x1, 0x00, 0x20);
+    FPGA()->writeSpdDev(DAC_TRD, 0x1, 0x00, 0x0);
+
+    FPGA()->writeSpdDev(DAC_TRD, 0x1, 0x24, 0x30);
+    FPGA()->writeSpdDev(DAC_TRD, 0x1, 0x25, 0x80);
+    FPGA()->writeSpdDev(DAC_TRD, 0x1, 0x27, 0x45);
+    FPGA()->writeSpdDev(DAC_TRD, 0x1, 0x28, 0x6C);
+
+    int attempt = 0;
+
+    while(1) {
+
+        FPGA()->writeSpdDev(DAC_TRD, 0x1, 0x29, 0xCB);
+        FPGA()->writeSpdDev(DAC_TRD, 0x1, 0x26, 0x42);
+        FPGA()->writeSpdDev(DAC_TRD, 0x1, 0x26, 0x43);
+
+        IPC_delay(10);
+
+        U32 val = 0;
+        bool ok = FPGA()->readSpdDev(DAC_TRD, 0x1, 0x2A, 0, val);
+
+        fprintf(stderr, "DAC REG 0x2A: 0x%.2X\n", val & 0xff);
+
+        if(ok) {
+            if((val & 0xff) == 0x01) {
+		fprintf(stderr, "%s(): Ok (1) DAC !!!!!\n", __FUNCTION__);
+                break;
+            }
+        } else {
+            fprintf(stderr, "%s(): Error (1) read answer from DAC\n", __FUNCTION__);
+            return false;
+        }
+
+        if(attempt == 3) {
+            fprintf(stderr, "%s(): Error (1) DAC programming\n", __FUNCTION__);
+            return false;
+            //break;
+        }
+
+        attempt++;
+    }
+
+    FPGA()->writeSpdDev(DAC_TRD, 0x1, 0x13, 0x72);
+
+    while(1) {
+
+        FPGA()->writeSpdDev(DAC_TRD, 0x1, 0x10, 0x00);
+        FPGA()->writeSpdDev(DAC_TRD, 0x1, 0x10, 0x02);
+        FPGA()->writeSpdDev(DAC_TRD, 0x1, 0x10, 0x03);
+
+        IPC_delay(10);
+
+        U32 val = 0;
+        bool ok = FPGA()->readSpdDev(DAC_TRD, 0x1, 0x21, 0, val);
+        fprintf(stderr, "DAC REG 0x21: 0x%.2X\n", val & 0xff);
+        if(ok) {
+            if((val & 0xff) == 0x9) {
+		fprintf(stderr, "%s(): Ok (2) DAC !!!!!\n", __FUNCTION__);
+                break;
+            }
+        } else {
+            fprintf(stderr, "%s(): Error (2) read answer from DAC\n", __FUNCTION__);
+            return false;
+        }
+
+        if(attempt == 3) {
+            fprintf(stderr, "%s(): Error (2) DAC programming\n", __FUNCTION__);
+            return false;
+            //break;
+        }
+
+        attempt++;
+    }
+
+//    FPGA()->writeSpdDev(DAC_TRD, 0x1, 0x06, 0x00);
+//    FPGA()->writeSpdDev(DAC_TRD, 0x1, 0x07, 0x02);
+//    FPGA()->writeSpdDev(DAC_TRD, 0x1, 0x08, 0x00);
+
+    return true;
 }
 
 //-----------------------------------------------------------------------------
