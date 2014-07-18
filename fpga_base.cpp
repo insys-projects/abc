@@ -208,6 +208,7 @@ u32 fpga_base::core_reg_peek_ind( u32 trd, u32 reg )
         if( ii>100 )
             IPC_delay( 1 );
         if( ii>200 ) {
+            fprintf(stderr, "%s(): TIMEOUT - TRD 0x%.2X REG 0x%.2X\n", __FUNCTION__, trd, reg);
             return 0xFFFF;
         }
     }
@@ -244,6 +245,7 @@ void fpga_base::core_reg_poke_ind( u32 trd, u32 reg, u32 val )
         if( ii>100 )
             IPC_delay( 1 );
         if( ii>200 ) {
+            fprintf(stderr, "%s(): TIMEOUT - TRD 0x%.2X REG 0x%.2X\n", __FUNCTION__, trd, reg);
             return;
         }
     }
