@@ -118,6 +118,9 @@ int trdprog::process_options(std::vector<std::string>& optionsList)
         if(strcmp(opt.c_str(),"TRD_READ_SPD") == 0) {
             process_trd_read_spd(argList);
         } else
+        if(strcmp(opt.c_str(),"TRD_WAIT_SPD_VAL") == 0) {
+                process_trd_wait_spd_val(argList);
+        } else
         if(strcmp(opt.c_str(),"TRD_PAUSE") == 0) {
             process_trd_pause(argList);
         }
@@ -367,14 +370,14 @@ int trdprog::process_trd_wait_spd_val(std::vector<unsigned>& argList)
         ++pass;
 
         if(pass >= attempt) {
-            fprintf(stderr, "TRD_WAIT_SPD_VAL( %d, 0x%X ): TIMEOUT! VAL = 0x%x\n", argList.at(0), argList.at(1), (spdRegValue & 0xff));
+            fprintf(stderr, "TRD_WAIT_SPD_VAL( %d, 0x%X ): --- TIMEOUT! VAL = 0x%x\n", argList.at(0), argList.at(1), (spdRegValue & 0xff));
             return -1;
         }
 
         IPC_delay(1);
     }
 
-    fprintf(stderr, "TRD_WAIT_SPD_VAL( %d, 0x%X ): VAL 0x%X\n", argList.at(0), argList.at(1), (spdRegValue & 0xff));
+    fprintf(stderr, "TRD_WAIT_SPD_VAL( %d, 0x%X ): OK! --- VAL 0x%X\n", argList.at(0), argList.at(1), (spdRegValue & 0xff));
 
     return 0;
 }
