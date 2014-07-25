@@ -75,32 +75,6 @@ int main(int argc, char *argv[])
         // used in signal handler to stop test
         pBrd = &brd;
 
-//        return 0;
-/*
-        brd.writeSpd(4, 0x0, 0x1, 0x8, (1 << 12));
-
-        fprintf(stderr, "MAIN: 0x%.4X\n", brd.RegPeekInd(0x0, 0x100));
-        fprintf(stderr, "MAIN: 0x%.4X\n", brd.RegPeekInd(0x0, 0x108));
-
-        fprintf(stderr, "ADC: 0x%.4X\n", brd.RegPeekInd(0x4, 0x100));
-        fprintf(stderr, "DAC: 0x%.4X\n", brd.RegPeekInd(0x5, 0x100));
-        fprintf(stderr, "MEM: 0x%.4X\n", brd.RegPeekInd(0x6, 0x100));
-
-        brd.writeSpd(0x5, 0x1, 0x0, 0x0);
-        brd.readSpdDev(0x5, 0x1, 0x0, 0x1, val);
-        fprintf(stderr, "0x%X\n", val & 0xff);
-
-        while(!brd.exitFlag()) {
-
-            brd.writeSpd(0x5, 0x1, 0x29, 0x8B);
-            brd.readSpdDev(0x5, 0x1, 0x29, 0x1, val);
-
-            fprintf(stderr, "0x%X\n", val & 0xff);
-
-            fprintf(stderr, "--------------------\n");
-            IPC_delay(100);
-        }
-*/
         //---------------------------------------------------- DATA FROM MAIN STREAM
 
         if(params.testMode == 0)
@@ -131,6 +105,11 @@ int main(int argc, char *argv[])
 
         if(params.testMode == 5)
             brd.dataFromAdcToMemAsFifo(params);
+
+        //----------------------------------------------------
+
+        if(params.testMode == 6)
+            brd.uartTest(UART_RATE_115200, false);
 
         //----------------------------------------------------
 

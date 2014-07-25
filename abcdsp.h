@@ -23,9 +23,21 @@
 //-----------------------------------------------------------------------------
 
 #define MAIN_TRD                  0
+#define UART_TRD                  3
 #define ADC_TRD                   4
 #define DAC_TRD                   5
 #define MEM_TRD                   6
+
+//-----------------------------------------------------------------------------
+
+#define UART_RATE_2400            0x1
+#define UART_RATE_4800            0x2
+#define UART_RATE_9600            0x4
+#define UART_RATE_19200           0x8
+#define UART_RATE_38400           0x10
+#define UART_RATE_57600           0x20
+#define UART_RATE_115200          0x40
+#define UART_LOOPBACK_MODE        0x8000
 
 //-----------------------------------------------------------------------------
 
@@ -98,6 +110,15 @@ public:
     void specAdcSettings(struct app_params_t& params);
     bool specDacSettings(struct app_params_t& params);
 
+    bool fpgaSerialMode(U8 speed, bool loopback);
+    bool fpgaSerialWrite(U8 data, int timeout = 10);
+    bool fpgaSerialRead(U8& data, int timeout = 10);
+    bool serialWrite(const std::string& data, int timeout = 10);
+    bool serialRead(std::string& data, int timeout = 10);
+    bool uartTest(U8 speed, bool loopback);
+
+    U8 fpgaSerialRead();
+
     Fpga *FPGA();
     Memory *DDR3();
 
@@ -108,6 +129,11 @@ private:
     bool                     m_exit;
     dac*                     m_dac;
     i2c*                     m_i2c;
+    fpga_trd_t               m_mainTrd;
+    fpga_trd_t               m_uartTrd;
+    fpga_trd_t               m_adcTrd;
+    fpga_trd_t               m_memTrd;
+    fpga_trd_t               m_dacTrd;
 
     void createFpgaMemory();
     void deleteFpgaMemory();

@@ -1270,3 +1270,161 @@ bool abcdsp::specDacSettings(struct app_params_t& params)
 }
 
 //-----------------------------------------------------------------------------
+
+bool abcdsp::fpgaSerialMode(U8 speed, bool loopback)
+{
+    if(!FPGA()->fpgaTrd(0, 0xBB, m_uartTrd)) {
+        return false;
+    }
+
+    fprintf(stderr, "UART: TRDID = 0x%X, TRDNUM = %d\n", m_uartTrd.id, m_uartTrd.number);
+
+    U32 mode = speed;
+
+    if(loopback)
+        mode |= UART_LOOPBACK_MODE;
+
+    FPGA()->FpgaRegPokeInd(m_uartTrd.number, 0x18, mode);
+
+    return true;
+}
+
+//-----------------------------------------------------------------------------
+
+bool abcdsp::serialWrite(const std::string& data, int timeout)
+{
+    for(unsigned i=0; i<data.size(); i++) {
+        bool ok = fpgaSerialWrite(data.at(i), timeout);
+        if(!ok) {
+            fprintf(stderr, "UART: WRITE BUFFER ERROR\n");
+            return false;
+        }
+    }
+
+    return true;
+}
+
+//-----------------------------------------------------------------------------
+
+bool abcdsp::serialRead(std::string& data, int timeout)
+{
+    data.clear();
+
+    while(!exitFlag()) {
+
+        U8 rdata = 0;
+        if( fpgaSerialRead(rdata, timeout) ) {
+            data.push_back(rdata);
+            if(rdata == 0xD)
+                break;
+        }
+    }
+
+    if(exitFlag())
+        return false;
+
+    return true;
+}
+
+//-----------------------------------------------------------------------------
+
+bool abcdsp::fpgaSerialWrite(U8 data, int timeout)
+{
+    if(m_uartTrd.id != 0xBB) {
+        return false;
+    }
+
+    U32 uart_status = 0;
+    while(timeout >= 0) {
+        uart_status = FPGA()->FpgaRegPeekInd(m_uartTrd.number, 0x206);
+        if(uart_status & 0x4) { // UART_TX_FIFO FULL
+            timeout -= 1;
+            IPC_delay(1);
+            if(timeout <= 0) {
+                return false;
+            }
+        } else {
+            break;
+        }
+    }
+
+    FPGA()->FpgaRegPokeInd(m_uartTrd.number, 0x202, data);
+
+    return true;
+}
+
+//-----------------------------------------------------------------------------
+
+bool abcdsp::fpgaSerialRead(U8& data, int timeout)
+{
+    if(m_uartTrd.id != 0xBB) {
+        return false;
+    }
+
+    U32 uart_status = 0;
+
+    while(timeout >= 0) {
+        uart_status = FPGA()->FpgaRegPeekInd(m_uartTrd.number, 0x206);
+        if(uart_status & 0x8) {
+            FPGA()->FpgaRegPokeInd(m_uartTrd.number, 0x204, 0x00);
+            break;
+        }
+        IPC_delay(1);
+        timeout -= 1;
+    }
+
+    if(timeout <= 0) {
+        //fprintf(stderr, "TIMEOUT! STATUS: 0x%X\n", uart_status);
+        return false;
+    }
+
+    data = FPGA()->FpgaRegPeekInd(m_uartTrd.number, 0x204);
+
+    return true;
+}
+
+//-----------------------------------------------------------------------------
+
+bool abcdsp::uartTest(U8 speed, bool loopback)
+{
+    fpgaSerialMode(speed, loopback);
+
+    serialWrite("UART TEST START\n\r", 100);
+    serialWrite("\n\r", 100);
+    serialWrite("INSYS\n\r", 100);
+    serialWrite("ABC BOARD\n\r", 100);
+    serialWrite("\n\r", 100);
+
+    serialWrite("Type any text in minicom window and press Enter\n\r", 100);
+    serialWrite("\n\r", 100);
+
+    while(!exitFlag()) {
+
+        U8 rdata = 0x0;
+        if(fpgaSerialRead(rdata, 100)) {
+            fprintf(stderr, "%c", rdata);
+            if(rdata == 0xD) {
+                fprintf(stderr, "\n");
+                fprintf(stderr, "\r");
+                fpgaSerialWrite(0xD);
+                fpgaSerialWrite(0xA);
+                break;
+            } else {
+                fpgaSerialWrite(rdata);
+            }
+        }
+/*
+        std::string buf;
+        if(serialRead(buf,100)) {
+            serialWrite(buf);
+            break;
+        }
+*/
+    }
+
+    serialWrite("UART TEST STOP\n\r", 100);
+
+    return true;
+}
+
+//-----------------------------------------------------------------------------
