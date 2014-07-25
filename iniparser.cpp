@@ -54,7 +54,7 @@ bool getParams(int argc, char *argv[], struct app_params_t& param)
         fprintf(stderr, "Parameter: adcMask - not found. Use default value\n");
     }
     param.adcMask = BRDC_strtol(Buffer,0,16);
-/*
+
     res = IPC_getPrivateProfileString(SECTION_NAME, _BRDC("adcStart"), _BRDC("0x3"), Buffer, sizeof(Buffer), iniFilePath);
     if(!res) {
         fprintf(stderr, "Parameter: adcStart - not found. Use default value\n");
@@ -66,7 +66,7 @@ bool getParams(int argc, char *argv[], struct app_params_t& param)
         fprintf(stderr, "Parameter: adcStartInv - not found. Use default value\n");
     }
     param.adcStartInv = BRDC_strtol(Buffer,0,16);
-*/
+
     res = IPC_getPrivateProfileString(SECTION_NAME, _BRDC("dmaBlockSize"), _BRDC("0x10000"), Buffer, sizeof(Buffer), iniFilePath);
     if(!res) {
         fprintf(stderr, "Parameter: dmaBlockSize - not found. Use default value\n");

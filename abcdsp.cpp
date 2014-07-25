@@ -32,7 +32,8 @@ abcdsp::abcdsp()
     fprintf(stderr, "====================== Open abcdsp ======================\n");
     m_exit = false;
     m_fpga = new Fpga(0);
-    m_trdprog = new trdprog(m_fpga, "dac.ini");
+    m_dac = new dac(m_fpga);
+    m_i2c = new i2c(1);
     fprintf(stderr, "========================================================\n");
 }
 
@@ -40,8 +41,9 @@ abcdsp::abcdsp()
 
 abcdsp::~abcdsp()
 {
-    if(m_trdprog) delete m_trdprog;
+    if(m_dac) delete m_dac;
     if(m_fpga) delete m_fpga;
+    if(m_i2c) delete m_i2c;
 }
 
 //-----------------------------------------------------------------------------
@@ -239,17 +241,29 @@ bool abcdsp::writeBuffer(U32 DmaChan, IPC_handle file, int fpos)
 
 //-----------------------------------------------------------------------------
 
-#define MAIN_TRD 0
-#define ADC_TRD  4
-#define DAC_TRD  5
-#define MEM_TRD  6
+U32 calc_stmode(const struct app_params_t& params)
+{
+    U32 stmode = 0x0;
+
+    if(params.adcStart == 0x2) {
+        stmode |= 0x87;
+    } else {
+        stmode &= ~0x80;
+    }
+
+    if(params.adcStartInv) {
+        stmode |= 0x40;
+    } else {
+        stmode &= ~0x40;
+    }
+
+    return stmode;
+}
 
 //-----------------------------------------------------------------------------
 
 void abcdsp::dataFromAdc(struct app_params_t& params)
 {
-//    specDacSettings(params);
-
     fprintf(stderr, "Start testing DMA: %d\n", params.dmaChannel);
     fprintf(stderr, "DMA information:\n" );
     infoDma();
@@ -272,6 +286,9 @@ void abcdsp::dataFromAdc(struct app_params_t& params)
     BRDC_snprintf(tmpflg, sizeof(tmpflg), _BRDC("data_%d.flg"), 0);
     flgName = tmpflg;
     createFlagFile(flgName.c_str());
+
+    string isvi_hdr;
+    createIsviHeader(isvi_hdr, 0, params);
 
     // prepare and start ADC and DMA channels for non masked FPGA
     fprintf(stderr, "Set DMA source\n");
@@ -327,6 +344,7 @@ void abcdsp::dataFromAdc(struct app_params_t& params)
         } else {
 
             writeBuffer(params.dmaChannel, isviFile, 0);
+            IPC_writeFile(isviFile, (void*)isvi_hdr.c_str(), isvi_hdr.size());
             lockDataFile(flgName.c_str(), counter);
         }
 
@@ -394,6 +412,9 @@ void abcdsp::dataFromAdcToMemAsMem(struct app_params_t& params)
     flgName = tmpflg;
     createFlagFile(flgName.c_str());
 
+    string isvi_hdr;
+    createIsviHeader(isvi_hdr, 0, params);
+
     unsigned pass_counter = 0;
 
     fprintf(stderr, "Program special ADC settings\n");
@@ -401,39 +422,38 @@ void abcdsp::dataFromAdcToMemAsMem(struct app_params_t& params)
 
     while(!exitFlag()) {
 
-        // prepare and start ADC and MEM for non masked FPGA
-        DDR3()->setMemory(1, 0, PostTrigSize, MemBufSize);
-        DDR3()->Enable(true);
+        DDR3()->Enable(false);
 
-        fprintf(stderr, "setDmaSource(MEM_TRD)\n");
         setDmaSource(params.dmaChannel, MEM_TRD);
-
-        fprintf(stderr, "setDmaRequestFlag(BRDstrm_DRQ_HALF)\n");
         setDmaRequestFlag(params.dmaChannel, BRDstrm_DRQ_HALF);
 
-        fprintf(stderr, "resetFifo(ADC_TRD)\n");
+        //brd->RegPokeInd(j, ADC_TRD, 0xC, 0x100);
+
         resetFifo(ADC_TRD);
-
-        fprintf(stderr, "resetFifo(MEM_TRD)\n");
         resetFifo(MEM_TRD);
-
-        fprintf(stderr, "resetDmaFifo()\n");
         resetDmaFifo(params.dmaChannel);
-
-        fprintf(stderr, "setAdcMask(0x%x)\n", params.adcMask);
         RegPokeInd(ADC_TRD, 0x10, params.adcMask);
 
-        fprintf(stderr, "setAdcStartMode(0x%x)\n", (0x3 << 4));
-        RegPokeInd(ADC_TRD, 0x17, (0x3 << 4));
+        DDR3()->setMemory(1, 0, PostTrigSize, MemBufSize);
 
-        fprintf(stderr, "MEM_TRD: MODE0 = 0x2038\n");
+        U32 stmode = calc_stmode(params);
+
+        RegPokeInd(ADC_TRD, 0x5, stmode);
+        RegPokeInd(ADC_TRD, 0x17, (params.adcStart << 4));
+        resetFifo(ADC_TRD);
+        resetFifo(MEM_TRD);
         RegPokeInd(MEM_TRD, 0x0, 0x2038);
-
-        fprintf(stderr, "ADC_TRD: MODE0 = 0x2038\n");
         RegPokeInd(ADC_TRD, 0x0, 0x2038);
 
+        IPC_delay(1);
+
+        U32 mode01 = RegPeekInd(ADC_TRD, 0);
+        U32 mode02 = RegPeekInd(MEM_TRD, 0);
+        mode01 = mode01;
+        mode02 = mode02;
+
         // Save MEM data in ISVI file for non masked FPGA
-        fprintf(stderr, "\n");
+        //fprintf(stderr, "\n");
         for(unsigned counter = 0; counter < params.dmaBuffersCount; counter++) {
 
             startDma(params.dmaChannel, 0x0); IPC_delay(10);
@@ -454,9 +474,10 @@ void abcdsp::dataFromAdcToMemAsMem(struct app_params_t& params)
             stopDma(params.dmaChannel);
         }
 
+        IPC_writeFile(isviFile, (void*)isvi_hdr.c_str(), isvi_hdr.size());
         lockDataFile(flgName.c_str(), pass_counter);
 
-        fprintf(stderr, "\n");
+        //fprintf(stderr, "\n");
         RegPokeInd(MEM_TRD, 0x0, 0x0);
         RegPokeInd(ADC_TRD, 0x0, 0x0);
         resetFifo(ADC_TRD);
@@ -1149,18 +1170,6 @@ void abcdsp::specAdcSettings(struct app_params_t& params)
     FPGA()->writeSpdDev(ADC_TRD, 0x0, 0x3, (params.analogOffset >> 8) & 0x1, (1 << 12));
     FPGA()->writeSpdDev(ADC_TRD, 0x0, 0x4, (params.analogOffset & 0xFF), (1 << 12));
     FPGA()->writeSpdDev(ADC_TRD, 0x0, 0x5, 0x28, (1 << 12));
-/*
-    U32 val = 0;
-
-    FPGA()->readSpdDev(ADC_TRD, 0x0, 0x01, 0, val);
-    fprintf(stderr, "0x01: 0x%.2X\n", val);
-    FPGA()->readSpdDev(ADC_TRD, 0x0, 0x03, 0, val);
-    fprintf(stderr, "0x03: 0x%.2X\n", val);
-    FPGA()->readSpdDev(ADC_TRD, 0x0, 0x04, 0, val);
-    fprintf(stderr, "0x04: 0x%.2X\n", val);
-    FPGA()->readSpdDev(ADC_TRD, 0x0, 0x05, 0, val);
-    fprintf(stderr, "0x05: 0x%.2X\n", val);
-*/
 }
 
 //-----------------------------------------------------------------------------
@@ -1168,21 +1177,7 @@ void abcdsp::specAdcSettings(struct app_params_t& params)
 bool abcdsp::specDacSettings(struct app_params_t& params)
 {
     U32 val = 0;
-/*
-    fprintf(stderr, "%s()\n", __FUNCTION__);
 
-    readSpdDev(DAC_TRD, 0x1, 0x00, 0, val);
-    fprintf(stderr, "0x00: 0x%.2X\n", val);
-
-    readSpdDev(DAC_TRD, 0x1, 0x01, 0, val);
-    fprintf(stderr, "0x01: 0x%.2X\n", val);
-
-    readSpdDev(DAC_TRD, 0x1, 0x02, 0, val);
-    fprintf(stderr, "0x02: 0x%.2X\n", val);
-
-    readSpdDev(DAC_TRD, 0x1, 0x33, 0, val);
-    fprintf(stderr, "0x33: 0x%.2X\n", val);
-*/
     RegPokeInd(DAC_TRD, 0x1A, 0x1);
 
     RegPokeInd(DAC_TRD, 0x18, 0x0);

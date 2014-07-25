@@ -32,7 +32,7 @@ fpga_base::fpga_base(u32 fpgaNumber) : m_fpgaNumber(fpgaNumber)
         throw except_info("%s, %d: %s() - Error open DEVICE%d.\n", __FILE__, __LINE__, __FUNCTION__, m_fpgaNumber);
     }
 
-    fprintf(stderr, "====================== Open DEVICE%d ======================\n", m_fpgaNumber);
+    fprintf(stderr, "%s(): Open DEVICE %d\n", __FUNCTION__, m_fpgaNumber);
 
     try {
 #ifdef _c6x_
@@ -54,7 +54,6 @@ fpga_base::fpga_base(u32 fpgaNumber) : m_fpgaNumber(fpgaNumber)
     }
 
     fprintf(stderr, "SLOT: 0x%.2X\tFPGA: 0x%.4X\tID: 0x%.4X\n", m_hwAddr, m_hwFpgaNum, m_hwID );
-    fprintf(stderr, "========================================================\n");
 }
 
 //-----------------------------------------------------------------------------

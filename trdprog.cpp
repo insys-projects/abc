@@ -70,7 +70,7 @@ int trdprog::get_options(std::vector<std::string>& optionsList)
         }
     }
 
-    fprintf(stderr, "optionListSize = %d\n", optionsList.size());
+    //fprintf(stderr, "optionListSize = %d\n", optionsList.size());
 
     return optionsList.size();
 }

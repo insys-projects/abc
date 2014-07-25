@@ -8,6 +8,8 @@
 #include "memory.h"
 #include "nctable.h"
 #include "trdprog.h"
+#include "dac.h"
+#include "i2c.h"
 
 #include <vector>
 #include <string>
@@ -20,8 +22,17 @@
 
 //-----------------------------------------------------------------------------
 
+#define MAIN_TRD                  0
+#define ADC_TRD                   4
+#define DAC_TRD                   5
+#define MEM_TRD                   6
+
+//-----------------------------------------------------------------------------
+
 class Fpga;
 class Memory;
+
+//-----------------------------------------------------------------------------
 
 class abcdsp
 {
@@ -95,7 +106,8 @@ private:
     Fpga*                    m_fpga;
     BRDctrl_StreamCBufAlloc  m_sSCA;
     bool                     m_exit;
-    trdprog*                 m_trdprog;
+    dac*                     m_dac;
+    i2c*                     m_i2c;
 
     void createFpgaMemory();
     void deleteFpgaMemory();
