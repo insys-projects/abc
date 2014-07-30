@@ -183,8 +183,8 @@ static inline __s32 i2c_smbus_read_byte(int file)
 	union i2c_smbus_data data;
 	if (i2c_smbus_access(file,I2C_SMBUS_READ,0,I2C_SMBUS_BYTE,&data))
 		return -1;
-	else
-		return 0x0FF & data.byte;
+    else //{ fprintf(stderr, "%s(): DATA = 0x%.2X\n", __FUNCTION__, data.byte);
+        return 0x0FF & data.byte; //}
 }
 
 static inline __s32 i2c_smbus_write_byte(int file, __u8 value)
@@ -218,8 +218,8 @@ static inline __s32 i2c_smbus_read_word_data(int file, __u8 command)
 	if (i2c_smbus_access(file,I2C_SMBUS_READ,command,
 	                     I2C_SMBUS_WORD_DATA,&data))
 		return -1;
-	else
-		return 0x0FFFF & data.word;
+    else //fprintf(stderr, "%s(): DATA = 0x%.8X\n", __FUNCTION__, data.word);
+        return 0x0FFFF & data.word;
 }
 
 static inline __s32 i2c_smbus_write_word_data(int file, __u8 command, 

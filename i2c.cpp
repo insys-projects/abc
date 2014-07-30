@@ -87,11 +87,11 @@ int i2c::open_i2c_dev(int i2cbus, char *filename, size_t size)
     if (m_deviceFile < 0) {
         if (errno == ENOENT) {
             fprintf(stderr, "Error: Could not open file "
-                "`/dev/i2c-%d' or `/dev/i2c/%d': %s\n",
-                i2cbus, i2cbus, strerror(ENOENT));
+                    "`/dev/i2c-%d' or `/dev/i2c/%d': %s\n",
+                    i2cbus, i2cbus, strerror(ENOENT));
         } else {
             fprintf(stderr, "Error: Could not open file "
-                "`%s': %s\n", filename, strerror(errno));
+                    "`%s': %s\n", filename, strerror(errno));
             if (errno == EACCES)
                 fprintf(stderr, "Run as root?\n");
         }
@@ -109,8 +109,8 @@ int i2c::set_slave_addr(int address)
 #ifdef __linux__
     if (ioctl(m_deviceFile, m_force ? I2C_SLAVE_FORCE : I2C_SLAVE, address) < 0) {
         fprintf(stderr,
-            "Error: Could not set address to 0x%02x: %s\n",
-            address, strerror(errno));
+                "Error: Could not set address to 0x%02x: %s\n",
+                address, strerror(errno));
         return -errno;
     }
 #endif
@@ -164,6 +164,67 @@ int i2c::read(int slaveAddress, int reg)
     //fprintf(stderr, "0x%02x\n", val);
 
     return val;
+#else
+    return 0;
+#endif
+}
+
+//-----------------------------------------------------------------------------
+
+int8_t i2c::i2c_read_byte_data(uint8_t address, uint8_t command, uint8_t *value)
+{
+    if( set_slave_addr(address) < 0 ) {
+        fprintf(stderr, "%s(): Error in set_slave_address()!\n", __FUNCTION__);
+        return 1;
+    }
+#ifdef __linux__
+    if (i2c_smbus_write_byte(m_deviceFile, command) < 0) {
+        fprintf(stderr, "%s(): Error in i2c_smbus_write_byte()!\n", __FUNCTION__);
+        return 1;
+    }
+    *value = i2c_smbus_read_byte(m_deviceFile);
+    return 0;
+#else
+    return 1;
+#endif
+}
+
+//-----------------------------------------------------------------------------
+
+int8_t i2c::i2c_write_byte_data(uint8_t address, uint8_t command, uint8_t value)
+{
+    if( set_slave_addr(address) < 0 ) {
+        fprintf(stderr, "%s(): Error in set_slave_address()!\n", __FUNCTION__);
+        return 1;
+    }
+#ifdef __linux__
+    int res = i2c_smbus_write_byte_data(m_deviceFile, command, value);
+    if(res < 0) {
+        fprintf(stderr, "%s(): Error in i2c_smbus_write_byte_data()!\n", __FUNCTION__);
+        return 1;
+    }
+    return 0;
+#else
+    return 0;
+#endif
+}
+
+//-----------------------------------------------------------------------------
+
+int8_t i2c::i2c_read_word_data(uint8_t address, uint8_t command, uint16_t *value)
+{
+    if( set_slave_addr(address) < 0 ) {
+        fprintf(stderr, "%s(): Error in set_slave_address()!\n", __FUNCTION__);
+        return 1;
+    }
+#ifdef __linux__
+    int res = i2c_smbus_read_word_data(m_deviceFile, command);
+    if(res < 0) {
+        fprintf(stderr, "%s(): Error in i2c_smbus_read_word_data()!\n", __FUNCTION__);
+        return 1;
+    }
+    *value = res;
+    return 0;
 #else
     return 0;
 #endif
