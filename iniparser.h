@@ -16,8 +16,8 @@ struct app_params_t {
     unsigned AdcSamplesPerChannel;
     unsigned AdcMemSamplesPerChan;
     unsigned AdcTest;
-    unsigned AdcBias0;
-    unsigned AdcBias1;
+    signed   AdcBias0;
+    signed   AdcBias1;
 
     unsigned AdcStartBaseSource;
     unsigned AdcStartBaseInverting;
