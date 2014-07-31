@@ -7,9 +7,9 @@
 
 //-------------------------------------------------------------------------------------
 
-dac::dac(Fpga *fpga) : m_fpga(fpga)
+dac::dac(Fpga *fpga, const app_params_t& params) : m_fpga(fpga), m_trdprog(0)
 {
-    g_aDac[0].aAmpl[0] = 16384;
+    g_aDac[0].aAmpl[0] = params.DacAmplitude0;
     g_aDac[0].aPhase[0] = 0;
     g_aDac[0].aPhaseKee[0] = 0;
     g_aDac[0].aThdac[0] = 0;
@@ -17,8 +17,8 @@ dac::dac(Fpga *fpga) : m_fpga(fpga)
     g_aDac[0].chanMask = 0x1;
     g_aDac[0].chanMaxNum = 0x1;
     g_aDac[0].chanNum = 0x1;
-    g_aDac[0].dSamplingRate = 1000000000.0;
-    g_aDac[0].dSignalFreq = 100000000.0;
+    g_aDac[0].dSamplingRate = params.SysSamplingRate;
+    g_aDac[0].dSignalFreq = params.DacSignalFreqHz;
     g_aDac[0].nFifoSizeb = 8192*8;
     g_aDac[0].outBufSizeb = 0;
     g_aDac[0].pBuf = 0;
@@ -28,12 +28,21 @@ dac::dac(Fpga *fpga) : m_fpga(fpga)
 
     g_nIsDebugMarker = 0;
     g_nDacNum = 1;
-    g_nSamplesPerChannel = 0x1000;
+    g_nSamplesPerChannel = params.DacSamplesPerChannel;
     g_idx[0] = 0;
 
-    m_trdprog = new trdprog(m_fpga, "dac.ini");
+    //m_trdprog = new trdprog(m_fpga, "dac.ini");
 
-    WorkMode5();
+    if(m_fpga->fpgaTrd(0, 0xB9, m_dacTrd)) {
+        if(!defaultDacSettings())
+            return;
+    }
+
+    if(params.DacCycle) {
+        WorkMode5();
+    } else {
+        WorkMode3();
+    }
 }
 
 //-------------------------------------------------------------------------------------
@@ -42,13 +51,12 @@ dac::~dac()
 {
     for(int ii=0; ii<g_nDacNum; ii++)
     {
-        U32 mode0 = m_fpga->FpgaRegPeekInd(0x5, 0x0);
+        U32 mode0 = m_fpga->FpgaRegPeekInd(m_dacTrd.number, 0x0);
         mode0 &= ~MODE0_START;      // запрет работы ЦАП
         mode0 |= MODE0_RST_FIFO;    // сброс FIFO ЦАП
-        m_fpga->FpgaRegPokeInd(0x5, 0x0, mode0);
+        m_fpga->FpgaRegPokeInd(m_dacTrd.number, 0x0, mode0);
         free( g_aDac[ii].pBuf );
     }
-
     delete m_trdprog;
 }
 
@@ -248,14 +256,14 @@ S32 dac::FifoOutputCPUStart( S32 isCycle )
     //
     // Стартовать вывод в FIFO, начиная с последнего ЦАПа так, чтобы закончить МАСТЕРОМ
     //
-    U16 status = m_fpga->FpgaRegPeekDir(0x5, 0x0);
+    U16 status = m_fpga->FpgaRegPeekDir(m_dacTrd.number, 0x0);
     fprintf(stderr, "0) STATUS = 0x%.4X\n", status);
 
     for( ii=g_nDacNum-1; ii>=0; ii-- )
     {
         idx = g_idx[ii];
 
-        U32 mode0 = m_fpga->FpgaRegPeekInd(0x5, 0x0);
+        U32 mode0 = m_fpga->FpgaRegPeekInd(m_dacTrd.number, 0x0);
 
         if(isCycle) {
             mode0 |= MODE0_RT;      // зацикливание FIFO ЦАП
@@ -265,29 +273,30 @@ S32 dac::FifoOutputCPUStart( S32 isCycle )
         mode0 &= ~MODE0_START;      // запрет работы ЦАП
         mode0 |= MODE0_RST_FIFO;    // сброс FIFO ЦАП
 
-        m_fpga->FpgaRegPokeInd(0x5, 0x0, mode0);
+        m_fpga->FpgaRegPokeInd(m_dacTrd.number, 0x0, mode0);
 
         IPC_delay(100);
 
-        mode0 = m_fpga->FpgaRegPeekInd(0x5, 0x0);
+        mode0 = m_fpga->FpgaRegPeekInd(m_dacTrd.number, 0x0);
         mode0 &= ~MODE0_RST_FIFO;
-        m_fpga->FpgaRegPokeInd(0x5, 0x0, mode0);
+        m_fpga->FpgaRegPokeInd(m_dacTrd.number, 0x0, mode0);
 
         IPC_delay(100);
 
-        m_fpga->FpgaWriteRegBufDir(0x5, 0x1, g_aDac[idx].pBuf, g_aDac[idx].outBufSizeb);
+        m_fpga->FpgaWriteRegBufDir(m_dacTrd.number, 0x1, g_aDac[idx].pBuf, g_aDac[idx].outBufSizeb);
 /*
+        // Debug signal
         U16 testBuf[] = { 0x0, 0x5A7F, 0x7FFF, 0x5A7F, 0x0, 0xA583, 0x8000, 0xA583, };
         for(int i=0; i<1000; i++) {
-            m_fpga->FpgaWriteRegBufDir(0x5, 0x1, testBuf, sizeof(testBuf));
+            m_fpga->FpgaWriteRegBufDir(m_dacTrd.number, 0x1, testBuf, sizeof(testBuf));
         }
 */
-        mode0 = m_fpga->FpgaRegPeekInd(0x5, 0x0);
+        mode0 = m_fpga->FpgaRegPeekInd(m_dacTrd.number, 0x0);
         mode0 |= MODE0_START;
-        m_fpga->FpgaRegPokeInd(0x5, 0x0, mode0); // разрешение работы ЦАП
+        m_fpga->FpgaRegPokeInd(m_dacTrd.number, 0x0, mode0); // разрешение работы ЦАП
     }
 
-    status = m_fpga->FpgaRegPeekDir(0x5, 0x0);
+    status = m_fpga->FpgaRegPeekDir(m_dacTrd.number, 0x0);
     fprintf(stderr, "1) STATUS = 0x%.4X\n", status);
 
     return 0;
@@ -300,7 +309,7 @@ S32 dac::WorkMode3()
     int				ii;
     volatile S32	tmp;
 
-    fprintf(stderr, "\nWorkMode 3: -- Restart FIFO -- \n\n");
+    fprintf(stderr, "\nWorkMode 3: -- Single FIFO -- \n\n");
 
     for( ii=0; ii<g_nDacNum; ii++ )
     {
@@ -350,9 +359,9 @@ S32 dac::WorkMode3()
     //
     //for( ii=0; ii<g_nDacNum; ii++ )
     //{
-    //    U32 mode0 = m_fpga->FpgaRegPeekInd(0x5, 0x0);
+    //    U32 mode0 = m_fpga->FpgaRegPeekInd(m_dacTrd.number, 0x0);
     //    mode0 &= ~MODE0_START;      // запрет работы ЦАП
-    //    m_fpga->FpgaRegPokeInd(0x5, 0x0, mode0);
+    //    m_fpga->FpgaRegPokeInd(m_dacTrd.number, 0x0, mode0);
     //    free( g_aDac[ii].pBuf );
     //}
 
@@ -410,16 +419,16 @@ S32 dac::WorkMode5()
     //
     //     FIFO
     //
-    FifoOutputCPUStart( 1 );
+    FifoOutputCPUStart(1);
     //fprintf(stderr, "Press any key to stop ...\n");
     //IPC_getch();
 
     //
     //
     //
-    //U32 mode0 = m_fpga->FpgaRegPeekInd(0x5, 0x0);
+    //U32 mode0 = m_fpga->FpgaRegPeekInd(m_dacTrd.number, 0x0);
     //mode0 &= ~MODE0_START;
-    //m_fpga->FpgaRegPokeInd(0x5, 0x0, mode0);
+    //m_fpga->FpgaRegPokeInd(m_dacTrd.number, 0x0, mode0);
 
 
     //
@@ -434,3 +443,113 @@ S32 dac::WorkMode5()
 }
 
 //-------------------------------------------------------------------------------------
+
+bool dac::defaultDacSettings()
+{
+    U32 val = 0;
+
+    m_fpga->FpgaRegPokeInd(m_dacTrd.number, 0x1A, 0x0);
+
+    m_fpga->FpgaRegPokeInd(m_dacTrd.number, 0x18, 0x0);
+    m_fpga->FpgaRegPokeInd(m_dacTrd.number, 0x18, 0x1);
+    m_fpga->FpgaRegPokeInd(m_dacTrd.number, 0x18, 0x0);
+
+    m_fpga->FpgaRegPokeInd(m_dacTrd.number, 0x5, 0x20);
+
+    m_fpga->writeSpdDev(m_dacTrd.number, 0x1, 0x00, 0x0);
+    m_fpga->writeSpdDev(m_dacTrd.number, 0x1, 0x00, 0x20);
+    m_fpga->writeSpdDev(m_dacTrd.number, 0x1, 0x00, 0x0);
+
+    m_fpga->writeSpdDev(m_dacTrd.number, 0x1, 0x22, 0xf);
+    m_fpga->writeSpdDev(m_dacTrd.number, 0x1, 0x23, 0x7);
+
+    m_fpga->readSpdDev(m_dacTrd.number, 0x1, 0x35, 0, val);
+    fprintf(stderr, "DAC ID: 0x%.2X\n", val & 0xFF);
+
+    IPC_delay(200);
+
+    m_fpga->writeSpdDev(m_dacTrd.number, 0x1, 0x24, 0x30);
+    m_fpga->writeSpdDev(m_dacTrd.number, 0x1, 0x25, 0x80);
+    m_fpga->writeSpdDev(m_dacTrd.number, 0x1, 0x27, 0x45);
+    m_fpga->writeSpdDev(m_dacTrd.number, 0x1, 0x28, 0x6C);
+
+    int attempt = 0;
+
+    while(1) {
+
+        m_fpga->writeSpdDev(m_dacTrd.number, 0x1, 0x29, 0xCB);
+        m_fpga->writeSpdDev(m_dacTrd.number, 0x1, 0x26, 0x42);
+        m_fpga->writeSpdDev(m_dacTrd.number, 0x1, 0x26, 0x43);
+
+        IPC_delay(100);
+
+        U32 val = 0;
+        bool ok = m_fpga->readSpdDev(m_dacTrd.number, 0x1, 0x2A, 0, val);
+
+        //fprintf(stderr, "DAC REG 0x2A: 0x%.2X\n", val & 0xff);
+
+        if(ok) {
+            if((val & 0xff) == 0x01) {
+                //fprintf(stderr, "%s(): Ok (1) DAC !!!!!\n", __FUNCTION__);
+                break;
+            }
+        } else {
+            fprintf(stderr, "%s(): Error (1) read answer from DAC\n", __FUNCTION__);
+            return false;
+        }
+
+        if(attempt == 3) {
+            fprintf(stderr, "%s(): Error (1) DAC programming\n", __FUNCTION__);
+            return false;
+            //break;
+        }
+
+        attempt++;
+    }
+
+    m_fpga->writeSpdDev(m_dacTrd.number, 0x1, 0x13, 0x72);
+    m_fpga->writeSpdDev(m_dacTrd.number, 0x1, 0x14, 0xCA);
+
+    while(1) {
+
+        m_fpga->writeSpdDev(m_dacTrd.number, 0x1, 0x10, 0x00);
+        m_fpga->writeSpdDev(m_dacTrd.number, 0x1, 0x10, 0x02);
+        m_fpga->writeSpdDev(m_dacTrd.number, 0x1, 0x10, 0x03);
+
+        IPC_delay(100);
+
+        U32 val = 0;
+        bool ok = m_fpga->readSpdDev(m_dacTrd.number, 0x1, 0x21, 0, val);
+        fprintf(stderr, "DAC REG 0x21: 0x%.2X\n", val & 0xff);
+        if(ok) {
+            if((val & 0xff) == 0x9) {
+                //fprintf(stderr, "%s(): Ok (2) DAC !!!!!\n", __FUNCTION__);
+                break;
+            }
+        } else {
+            fprintf(stderr, "%s(): Error (2) read answer from DAC\n", __FUNCTION__);
+            return false;
+        }
+
+        if(attempt == 3) {
+            fprintf(stderr, "%s(): Error (2) DAC programming\n", __FUNCTION__);
+            return false;
+            //break;
+        }
+
+        attempt++;
+    }
+
+    m_fpga->readSpdDev(m_dacTrd.number, 0x1, 0x21, 0, val);
+    //fprintf(stderr, "DAC REG 0x21: 0x%.2X\n", val & 0xff);
+    m_fpga->readSpdDev(m_dacTrd.number, 0x1, 0x14, 0, val);
+    //fprintf(stderr, "DAC REG 0x14: 0x%.2X\n", val & 0xff);
+
+//    m_fpga->writeSpdDev(m_dacTrd.number, 0x1, 0x06, 0x00);
+//    m_fpga->writeSpdDev(m_dacTrd.number, 0x1, 0x07, 0x02);
+//    m_fpga->writeSpdDev(m_dacTrd.number, 0x1, 0x08, 0x00);
+
+    return true;
+}
+
+//-----------------------------------------------------------------------------

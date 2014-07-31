@@ -100,9 +100,12 @@ bool lockDataFile(const IPC_str* fname, int counter)
             break;
         }
         if(rr==0) {
-        } break;
-        if((rr==(int)0xffffffff) && (ii>0x10000)) {
-        } break;
+            break;
+        }
+        if((rr==(int)0xffffffff) && (ii>1000)) {
+            break;
+        }
+        IPC_delay(1);
     }
 
     return true;
@@ -160,14 +163,9 @@ bool createIsviHeader(std::string& hdr, unsigned char hwFpgaNum, struct app_para
     hdr.clear();
 
     unsigned BufSize = 0;
-    unsigned NumOfChannel = 0;
-    for(int i=0; i<4; i++) {
-        if( params.adcMask & (0x1 << i)) {
-            NumOfChannel += 1;
-        }
-    }
+    unsigned NumOfChannel = 2;
 
-    switch(params.testMode) {
+    switch(params.AdcDaqIntoMemory) {
     case 0: BufSize = params.dmaBlockSize * params.dmaBlockCount; break;
     case 1: BufSize = params.dmaBuffersCount * params.dmaBlockSize * params.dmaBlockCount; break;
     default: BufSize = params.dmaBlockSize * params.dmaBlockCount; break;
@@ -177,7 +175,7 @@ bool createIsviHeader(std::string& hdr, unsigned char hwFpgaNum, struct app_para
     snprintf(str, sizeof(str), "NUMBER_OF_CHANNELS__ %d\r\n", NumOfChannel);                    hdr += str;
     snprintf(str, sizeof(str), "NUMBERS_OF_CHANNELS_ 0,1\r\n");                                 hdr += str;
     snprintf(str, sizeof(str), "NUMBER_OF_SAMPLES___ %d\r\n", BufSize / NumOfChannel / 2);      hdr += str;
-    snprintf(str, sizeof(str), "SAMPLING_RATE_______ %d\r\n", (int)((1.0e+6)*params.syncFd));   hdr += str;
+    snprintf(str, sizeof(str), "SAMPLING_RATE_______ %d\r\n", (int)(params.SysSamplingRate));   hdr += str;
     snprintf(str, sizeof(str), "BYTES_PER_SAMPLES___ 2\r\n");                                   hdr += str;
     snprintf(str, sizeof(str), "SAMPLES_PER_BYTES___ 1\r\n");                                   hdr += str;
     snprintf(str, sizeof(str), "IS_COMPLEX_SIGNAL?__ NO\r\n");                                  hdr += str;

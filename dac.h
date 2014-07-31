@@ -3,6 +3,7 @@
 
 #include "fpga.h"
 #include "trdprog.h"
+#include "iniparser.h"
 
 //-------------------------------------------------------------------------------------
 
@@ -31,8 +32,9 @@ typedef struct
     U32				nFifoSizeb;
     float			dSamplingRate;
     float			dSignalFreq;
+    U32				nAutoRestart;
 
-    void					*pBuf;
+    void			*pBuf;
     BRDctrl_StreamCBufAlloc rBufAlloc;
 } TDacParam;
 
@@ -49,7 +51,7 @@ typedef struct
 class dac
 {
 public:
-    dac(Fpga *fpga);
+    dac(Fpga *fpga, const struct app_params_t& params );
     virtual ~dac();
 
     S32 CalcSignalToChan( void *pvBuf, S32 nSamples, S32 signalType,
@@ -61,12 +63,14 @@ public:
                          float twiddle, float *aAmpl, float *aPhase );
     S32 CalcSignal( void *pvBuf, S32 nSamples, int idxDac, int cnt );
     S32 FifoOutputCPUStart( S32 isCycle );
+    bool defaultDacSettings();
     S32 WorkMode3();
     S32 WorkMode5();
 
 private:
     dac();
     Fpga* m_fpga;
+    fpga_trd_t m_dacTrd;
     trdprog*   m_trdprog;
     TDacParam g_aDac[MAX_DEVICE];
     int g_nIsDebugMarker;

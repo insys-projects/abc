@@ -10,6 +10,8 @@
 #include "trdprog.h"
 #include "dac.h"
 #include "i2c.h"
+#include "ltc2991.h"
+#include "iniparser.h"
 
 #include <vector>
 #include <string>
@@ -19,14 +21,6 @@
 
 #define DSP_FPGA_COUNT            1
 #define DMA_CHANNEL_NUM           4
-
-//-----------------------------------------------------------------------------
-
-#define MAIN_TRD                  0
-#define UART_TRD                  3
-#define ADC_TRD                   4
-#define DAC_TRD                   5
-#define MEM_TRD                   6
 
 //-----------------------------------------------------------------------------
 
@@ -49,18 +43,16 @@ class Memory;
 class abcdsp
 {
 public:
-    abcdsp();
+    abcdsp(const struct app_params_t& params);
     virtual ~abcdsp();
 
     // DATA MAIN
     void dataFromMain(struct app_params_t& params);
     void dataFromMainToMemAsMem(struct app_params_t& params);
-    void dataFromMainToMemAsFifo(struct app_params_t& params);
 
     // DATA ADC
     void dataFromAdc(struct app_params_t& params);
     void dataFromAdcToMemAsMem(struct app_params_t& params);
-    void dataFromAdcToMemAsFifo(struct app_params_t& params);
 
     // EXIT
     void setExitFlag(bool exit);
@@ -108,7 +100,6 @@ public:
     void checkMainDataStream(U32 dmaBlockSize, const std::vector<void*>& Buffers, bool width);
 
     void specAdcSettings(struct app_params_t& params);
-    bool specDacSettings(struct app_params_t& params);
 
     bool fpgaSerialMode(U8 speed, bool loopback);
     bool fpgaSerialWrite(U8 data, int timeout = 10);
@@ -116,6 +107,7 @@ public:
     bool serialWrite(const std::string& data, int timeout = 10);
     bool serialRead(std::string& data, int timeout = 10);
     bool uartTest(U8 speed, bool loopback);
+    bool ltcTest();
 
     U8 fpgaSerialRead();
 
@@ -128,12 +120,14 @@ private:
     BRDctrl_StreamCBufAlloc  m_sSCA;
     bool                     m_exit;
     dac*                     m_dac;
-    i2c*                     m_i2c;
+
     fpga_trd_t               m_mainTrd;
     fpga_trd_t               m_uartTrd;
     fpga_trd_t               m_adcTrd;
-    fpga_trd_t               m_memTrd;
     fpga_trd_t               m_dacTrd;
+    fpga_trd_t               m_memTrd;
+
+    struct app_params_t      m_params;
 
     void createFpgaMemory();
     void deleteFpgaMemory();

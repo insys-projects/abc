@@ -54,12 +54,10 @@ void stop_exam(int sig)
 int main(int argc, char *argv[])
 {
     struct app_params_t params;
-
     if(!getParams(argc, argv, params)) {
         fprintf(stderr, "Error get parameters from file: %s\n", argv[1]);
         return -1;
     }
-
     showParams(params);
 
 #if USE_SIGNAL
@@ -70,48 +68,26 @@ int main(int argc, char *argv[])
 
     try {
 
-        abcdsp brd;
+        abcdsp brd(params);
 
         // used in signal handler to stop test
         pBrd = &brd;
 
-        //---------------------------------------------------- DATA FROM MAIN STREAM
-
-        if(params.testMode == 0)
-            brd.dataFromMain(params);
-
-        //---------------------------------------------------- DDR3 FPGA AS MEMORY
-
-        if(params.testMode == 1)
-            brd.dataFromMainToMemAsMem(params);
-
-        //---------------------------------------------------- DDR3 FPGA AS FIFO
-
-        if(params.testMode == 2)
-            brd.dataFromMainToMemAsFifo(params);
-
-
-        //---------------------------------------------------- DATA FROM STREAM ADC
-
-        if(params.testMode == 3)
-            brd.dataFromAdc(params);
-
-        //---------------------------------------------------- DDR3 FPGA AS MEMORY
-
-        if(params.testMode == 4)
-            brd.dataFromAdcToMemAsMem(params);
-
-        //---------------------------------------------------- DDR3 FPGA AS FIFO
-
-        if(params.testMode == 5)
-            brd.dataFromAdcToMemAsFifo(params);
-
-        //----------------------------------------------------
-
-        if(params.testMode == 6)
+        switch(params.SysTestMode) {
+        case 0: {
+            if(params.AdcDaqIntoMemory) {
+                brd.dataFromAdcToMemAsMem(params);
+            } else {
+                brd.dataFromAdc(params);
+            }
+        } break;
+        case 1: {
+            brd.ltcTest();
+        } break;
+        case 2: {
             brd.uartTest(UART_RATE_115200, false);
-
-        //----------------------------------------------------
+        } break;
+        }
 
     }
     catch(except_info_t err) {
