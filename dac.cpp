@@ -31,18 +31,33 @@ dac::dac(Fpga *fpga, const app_params_t& params) : m_fpga(fpga), m_trdprog(0)
     g_nSamplesPerChannel = params.DacSamplesPerChannel;
     g_idx[0] = 0;
 
+    // Search DAC TRD
+    if(!m_fpga->fpgaTrd(0, 0xB9, m_dacTrd)) {
+        fprintf(stderr, "%s(): DAC TRD 0x%.2X not found!\n", __FUNCTION__, 0xB9);
+        return;
+    }
+
+    // Reset and Sync DAC
+    m_fpga->FpgaRegPokeInd(m_dacTrd.number, 0x18, 0x0);
+    m_fpga->FpgaRegPokeInd(m_dacTrd.number, 0x18, 0x1);
+    m_fpga->FpgaRegPokeInd(m_dacTrd.number, 0x18, 0x0);
+
+    // Test mode
+    m_fpga->FpgaRegPokeInd(m_dacTrd.number, 0x1A, params.DacTest);
+
+    // STMODE
+    U32 stmode = (params.DacRestart << 15) |
+                 (params.DacStopInverting << 14) |
+                 (params.DacStopSource << 8) |
+                 (params.DacStartMode << 7) |
+                 (params.DacStartBaseInverting << 6) |
+                  params.DacStartBaseSource;
+    m_fpga->FpgaRegPokeInd(m_dacTrd.number, 0x5, stmode);
+
+    // DAC default settings
+    defaultDacSettings();
+
     //m_trdprog = new trdprog(m_fpga, "dac.ini");
-
-    if(m_fpga->fpgaTrd(0, 0xB9, m_dacTrd)) {
-        if(!defaultDacSettings())
-            return;
-    }
-
-    if(params.DacCycle) {
-        WorkMode5();
-    } else {
-        WorkMode3();
-    }
 }
 
 //-------------------------------------------------------------------------------------
@@ -447,14 +462,6 @@ S32 dac::WorkMode5()
 bool dac::defaultDacSettings()
 {
     U32 val = 0;
-
-    m_fpga->FpgaRegPokeInd(m_dacTrd.number, 0x1A, 0x0);
-
-    m_fpga->FpgaRegPokeInd(m_dacTrd.number, 0x18, 0x0);
-    m_fpga->FpgaRegPokeInd(m_dacTrd.number, 0x18, 0x1);
-    m_fpga->FpgaRegPokeInd(m_dacTrd.number, 0x18, 0x0);
-
-    m_fpga->FpgaRegPokeInd(m_dacTrd.number, 0x5, 0x20);
 
     m_fpga->writeSpdDev(m_dacTrd.number, 0x1, 0x00, 0x0);
     m_fpga->writeSpdDev(m_dacTrd.number, 0x1, 0x00, 0x20);

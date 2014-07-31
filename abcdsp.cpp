@@ -28,7 +28,7 @@
 using namespace std;
 //-----------------------------------------------------------------------------
 
-abcdsp::abcdsp(const struct app_params_t& params) : m_params(params)
+abcdsp::abcdsp(const struct app_params_t& params) : m_dac(0), m_adc(0), m_params(params)
 {
     fprintf(stderr, "====================== ABCDSP ======================\n");
     m_exit = false;
@@ -50,7 +50,20 @@ abcdsp::abcdsp(const struct app_params_t& params) : m_params(params)
     if(m_fpga->fpgaTrd(0, 0x9B, m_memTrd)) {
         fprintf( stderr, "%d) MEM:      0x%.2X\n", m_memTrd.number, m_memTrd.id );
     }
+
+    // Reset all tetrades except TRD MEM (it was init in FPGA object)
+    m_fpga->resetTrd(m_uartTrd.number);
+    m_fpga->resetTrd(m_adcTrd.number);
+    m_fpga->resetTrd(m_dacTrd.number);
+
+    m_fpga->resetFifo(m_uartTrd.number);
+    m_fpga->resetFifo(m_adcTrd.number);
+    m_fpga->resetFifo(m_dacTrd.number);
+
+    m_adc = new adc(m_fpga, params);
     m_dac = new dac(m_fpga, params);
+    m_mem = m_fpga->ddr3();
+
     fprintf(stderr, "====================================================\n");
 }
 
@@ -58,8 +71,9 @@ abcdsp::abcdsp(const struct app_params_t& params) : m_params(params)
 
 abcdsp::~abcdsp()
 {
-    if(m_dac) delete m_dac;
-    if(m_fpga) delete m_fpga;
+    delete m_dac;
+    delete m_adc;
+    delete m_fpga;
 }
 
 //-----------------------------------------------------------------------------
@@ -292,43 +306,19 @@ void abcdsp::dataFromAdc(struct app_params_t& params)
     fprintf(stderr, "Set DMA direction\n");
     setDmaDirection(params.dmaChannel, BRDstrm_DIR_IN);
 
-    fprintf(stderr, "Set ADC sync mode\n");
-    RegPokeInd(m_adcTrd.number, 0x18, 1);
-    IPC_delay(10);
-    RegPokeInd(m_adcTrd.number, 0x18, 0);
-    IPC_delay(10);
-
-    fprintf(stderr, "Program special ADC settings\n");
-    specAdcSettings(params);
-
-    fprintf(stderr, "Set ADC channels mask\n");
-    RegPokeInd(m_adcTrd.number, 0x10, 0x3);
-
-    fprintf(stderr, "Set ADC clock source\n");
-    if(params.SysRefClockSource)
-        RegPokeInd(m_adcTrd.number, 0x13, 0x81);
-    else
-        RegPokeInd(m_adcTrd.number, 0x13, 0x0);
-
-    fprintf(stderr, "Set ADC test signal forming\n");
-    if(params.AdcTest)
-        RegPokeInd(m_adcTrd.number, 0x1A, 0x1);
-    else
-        RegPokeInd(m_adcTrd.number, 0x1A, 0x0);
-
-    fprintf(stderr, "Set ADC start mode\n");
-    U32 stmode = (params.AdcStopInverting << 14) |
-                 (params.AdcStopSource << 8) |
-                 (params.AdcStartMode << 7) |
-                 (params.AdcStartBaseInverting << 6) |
-                 params.AdcStartBaseSource;
-    RegPokeInd(m_adcTrd.number, 0x5, stmode);
+    //----------------------------------------------------------------
+    if(params.DacCycle) {
+        m_dac->WorkMode5();
+    } else {
+        m_dac->WorkMode3();
+    }
+    //----------------------------------------------------------------
 
     fprintf(stderr, "Start DMA channel\n");
     startDma(params.dmaChannel, 0);
 
     fprintf(stderr, "Start ADC\n");
-    RegPokeInd(m_adcTrd.number, 0, 0x2038);
+    m_adc->start();
 
     unsigned counter = 0;
 
@@ -337,8 +327,7 @@ void abcdsp::dataFromAdc(struct app_params_t& params)
         // save ADC data into ISVI files for non masked FPGA
         if( waitDmaBuffer(params.dmaChannel, 2000) < 0 ) {
 
-            u32 status_adc = RegPeekDir(m_adcTrd.number, 0x0);
-            fprintf( stderr, "ERROR TIMEOUT! ADC STATUS = 0x%.4X\n", status_adc & 0xFFFF);
+            fprintf( stderr, "ERROR TIMEOUT! ADC STATUS = 0x%.4X\n", m_adc->status());
             break;
 
         } else {
@@ -349,19 +338,21 @@ void abcdsp::dataFromAdc(struct app_params_t& params)
         }
 
         //display 1-st element of each block
-        fprintf(stderr, "%d: STATUS = 0x%.4X [", ++counter, (u16)RegPeekDir(m_adcTrd.number,0x0));
+        fprintf(stderr, "%d: STATUS = 0x%.4X [", ++counter, m_adc->status());
         for(unsigned j=0; j<dmaBlocks.size(); j++) {
             u32* value = (u32*)dmaBlocks.at(j);
             fprintf(stderr, " 0x%.8x ", value[0]);
         }
         fprintf(stderr, "]\r");
 
-        RegPokeInd(m_adcTrd.number,0,0x0);
+        m_adc->stop();
+        m_adc->reset_fifo();
+
         stopDma(params.dmaChannel);
-        resetFifo(m_adcTrd.number);
         resetDmaFifo(params.dmaChannel);
         startDma(params.dmaChannel,0);
-        RegPokeInd(m_adcTrd.number,0,0x2038);
+
+        m_adc->start();
 
         if(params.AdcCycle)
             continue;
@@ -371,8 +362,8 @@ void abcdsp::dataFromAdc(struct app_params_t& params)
 
     // stop ADC and DMA channels for non masked FPGA
     // and free DMA buffers
-    RegPokeInd(m_adcTrd.number,0,0x0);
     stopDma(params.dmaChannel);
+    m_adc->stop();
 
     IPC_delay(10);
 
@@ -416,33 +407,28 @@ void abcdsp::dataFromAdcToMemAsMem(struct app_params_t& params)
 
     unsigned pass_counter = 0;
 
-    fprintf(stderr, "Program special ADC settings\n");
-    specAdcSettings(params);
+    //----------------------------------------------------------------
+    if(params.DacCycle) {
+        m_dac->WorkMode5();
+    } else {
+        m_dac->WorkMode3();
+    }
+    //----------------------------------------------------------------
 
     while(!exitFlag()) {
 
-        DDR3()->Enable(false);
+        m_mem->stop();
 
         setDmaSource(params.dmaChannel, m_memTrd.number);
         setDmaRequestFlag(params.dmaChannel, BRDstrm_DRQ_HALF);
 
-        resetFifo(m_adcTrd.number);
-        resetFifo(m_memTrd.number);
+        m_adc->reset_fifo();
+        m_mem->reset_fifo();
         resetDmaFifo(params.dmaChannel);
 
-        RegPokeInd(m_adcTrd.number, 0x10, 0x3);
-
-        DDR3()->setMemory(1, 0, PostTrigSize, MemBufSize);
-
-        U32 stmode = (params.AdcStopInverting << 14) |
-                     (params.AdcStopSource << 8) |
-                     (params.AdcStartMode << 7) |
-                     (params.AdcStartBaseInverting << 6) |
-                     params.AdcStartBaseSource;
-
-        RegPokeInd(m_adcTrd.number, 0x5, stmode);
-        RegPokeInd(m_memTrd.number, 0x0, 0x2038);
-        RegPokeInd(m_adcTrd.number, 0x0, 0x2038);
+        m_mem->setup(1, 0, PostTrigSize, MemBufSize);
+        m_mem->start();
+        m_adc->start();
 
         IPC_delay(1);
 
@@ -453,9 +439,7 @@ void abcdsp::dataFromAdcToMemAsMem(struct app_params_t& params)
 
             if( waitDmaBuffer(params.dmaChannel, 4000) < 0 ) {
 
-                u32 status_adc = RegPeekDir(m_adcTrd.number, 0x0);
-                u32 status_mem = RegPeekDir(m_memTrd.number, 0x0);
-                fprintf( stderr, "ERROR TIMEOUT! ADC STATUS = 0x%.4X MEM STATUS = 0x%.4X\n", status_adc, status_mem);
+                fprintf( stderr, "ERROR TIMEOUT! ADC STATUS = 0x%.4X MEM STATUS = 0x%.4X\n", m_adc->status(), m_mem->status());
                 break;
 
             } else {
@@ -471,10 +455,11 @@ void abcdsp::dataFromAdcToMemAsMem(struct app_params_t& params)
         lockDataFile(flgName.c_str(), pass_counter);
 
         //fprintf(stderr, "\n");
-        RegPokeInd(m_memTrd.number, 0x0, 0x0);
-        RegPokeInd(m_adcTrd.number, 0x0, 0x0);
-        resetFifo(m_adcTrd.number);
-        resetFifo(m_memTrd.number);
+        m_mem->stop();
+        m_mem->reset_fifo();
+        m_adc->stop();
+        m_adc->reset_fifo();
+
         resetDmaFifo(params.dmaChannel);
 
         ++pass_counter;
@@ -487,8 +472,8 @@ void abcdsp::dataFromAdcToMemAsMem(struct app_params_t& params)
 
     // stop ADC, MEM and DMA channels for non masked FPGA
     // and free DMA buffers
-    RegPokeInd(m_memTrd.number, 0x0, 0x0);
-    RegPokeInd(m_adcTrd.number, 0x0, 0x0);
+    m_mem->stop();
+    m_adc->stop();
     stopDma(params.dmaChannel);
 
     IPC_delay(10);
@@ -842,25 +827,6 @@ void abcdsp::checkMainDataStream(U32 dmaBlockSize, const std::vector<void*>& Buf
 
         fprintf(stderr, "\n");
     }
-}
-
-//-----------------------------------------------------------------------------
-
-void abcdsp::specAdcSettings(struct app_params_t& params)
-{
-    // ADC0
-    unsigned sign0 = (params.AdcBias0 < 0) ? 1 : 0;
-    FPGA()->writeSpdDev(m_adcTrd.number, 0x0, 0x1, 0x8);
-    FPGA()->writeSpdDev(m_adcTrd.number, 0x0, 0x3, sign0);
-    FPGA()->writeSpdDev(m_adcTrd.number, 0x0, 0x4, (abs(params.AdcBias0) & 0xFF));
-    FPGA()->writeSpdDev(m_adcTrd.number, 0x0, 0x5, 0x28);
-
-    // ADC1
-    unsigned sign1 = (params.AdcBias1 < 0) ? 1 : 0;
-    FPGA()->writeSpdDev(m_adcTrd.number, 0x0, 0x1, 0x8, (1<<4));
-    FPGA()->writeSpdDev(m_adcTrd.number, 0x0, 0x3, sign1, (1<<4));
-    FPGA()->writeSpdDev(m_adcTrd.number, 0x0, 0x4, (abs(params.AdcBias1) & 0xFF), (1<<4));
-    FPGA()->writeSpdDev(m_adcTrd.number, 0x0, 0x5, 0x28, (1<<4));
 }
 
 //-----------------------------------------------------------------------------

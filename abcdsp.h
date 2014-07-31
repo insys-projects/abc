@@ -9,6 +9,7 @@
 #include "nctable.h"
 #include "trdprog.h"
 #include "dac.h"
+#include "adc.h"
 #include "i2c.h"
 #include "ltc2991.h"
 #include "iniparser.h"
@@ -99,8 +100,6 @@ public:
     void getFpgaTemperature(float& t);
     void checkMainDataStream(U32 dmaBlockSize, const std::vector<void*>& Buffers, bool width);
 
-    void specAdcSettings(struct app_params_t& params);
-
     bool fpgaSerialMode(U8 speed, bool loopback);
     bool fpgaSerialWrite(U8 data, int timeout = 10);
     bool fpgaSerialRead(U8& data, int timeout = 10);
@@ -120,6 +119,8 @@ private:
     BRDctrl_StreamCBufAlloc  m_sSCA;
     bool                     m_exit;
     dac*                     m_dac;
+    adc*                     m_adc;
+    Memory*                  m_mem;
 
     fpga_trd_t               m_mainTrd;
     fpga_trd_t               m_uartTrd;
@@ -128,9 +129,6 @@ private:
     fpga_trd_t               m_memTrd;
 
     struct app_params_t      m_params;
-
-    void createFpgaMemory();
-    void deleteFpgaMemory();
 };
 
 #endif // __ABCDSP_H__
