@@ -26,16 +26,15 @@ using namespace std;
 
 Memory::Memory(Fpga *fpga) : m_fpga(fpga)
 {
-    m_MemTetrNum = 0;
     m_dwPhysMemSize = 0;
 
     memset(&m_DDR3, 0, sizeof m_DDR3);
 
     m_DDR3.Mode = 1;
-    bool found = m_fpga->trd_number(SDRAMFMC106P_TETR_ID, m_MemTetrNum);
+    bool found = m_fpga->fpgaTrd(0, SDRAMFMC106P_TETR_ID, m_memTrd);
     if(!found)
     {
-        found = m_fpga->trd_number(SDRAMDDR3X_TETR_ID, m_MemTetrNum);
+        found = m_fpga->fpgaTrd(0, SDRAMDDR3X_TETR_ID, m_memTrd);
         if(found) {
             m_DDR3.Mode = 3;
         } else {
@@ -60,11 +59,11 @@ Memory::~Memory()
 
 u8 Memory::ReadSpdByte(U32 OffsetSPD, U32 CtrlSPD)
 {
-    m_fpga->FpgaRegPokeInd(m_MemTetrNum, SDRAMnr_SPDADDR, OffsetSPD);
+    m_fpga->FpgaRegPokeInd(m_memTrd.number, SDRAMnr_SPDADDR, OffsetSPD);
     IPC_delay(10);
-    m_fpga->FpgaRegPokeInd(m_MemTetrNum, SDRAMnr_SPDCTRL, CtrlSPD);
+    m_fpga->FpgaRegPokeInd(m_memTrd.number, SDRAMnr_SPDCTRL, CtrlSPD);
     IPC_delay(10);
-    return (u8)m_fpga->FpgaRegPeekInd(m_MemTetrNum, SDRAMnr_SPDDATAL);
+    return (u8)m_fpga->FpgaRegPeekInd(m_memTrd.number, SDRAMnr_SPDDATAL);
 }
 
 //-----------------------------------------------------------------------------
@@ -199,7 +198,7 @@ void Memory::MemInit(U32 init)
     ddrCfg.ByBits.Registered = 0;
     ddrCfg.ByBits.InitMemCmd = init;
 
-    m_fpga->FpgaRegPokeInd(m_MemTetrNum, SDRAMnr_CFG, ddrCfg.AsWhole);
+    m_fpga->FpgaRegPokeInd(m_memTrd.number, SDRAMnr_CFG, ddrCfg.AsWhole);
 
     fprintf(stderr, "MODE1 = 0x%x\n", (U16)ddrCfg.AsWhole);
     fprintf(stderr, "Waiting for Memory Initialization  ... \n");
@@ -209,7 +208,7 @@ void Memory::MemInit(U32 init)
     U32 loop = 0;
     do
     {
-        status_mem = m_fpga->FpgaRegPeekDir(m_MemTetrNum, 0);
+        status_mem = m_fpga->FpgaRegPeekDir(m_memTrd.number, 0);
         fprintf( stderr, "%.8d: STATUS 0x%.4X\r", loop, status_mem );
         IPC_delay( 100 );
         loop++;
@@ -228,11 +227,11 @@ int Memory::SetSel(U32& sel)
 {
     SDRAM_MODE3 Mode3;
 
-    Mode3.AsWhole = m_fpga->FpgaRegPeekInd(m_MemTetrNum, SDRAMnr_MODE3);
+    Mode3.AsWhole = m_fpga->FpgaRegPeekInd(m_memTrd.number, SDRAMnr_MODE3);
     Mode3.ByBits.SelIn = sel & 0xFF;
     Mode3.ByBits.SelOut = (sel >> 8) & 0xFF;
 
-    m_fpga->FpgaRegPokeInd(m_MemTetrNum, SDRAMnr_MODE3, Mode3.AsWhole);
+    m_fpga->FpgaRegPokeInd(m_memTrd.number, SDRAMnr_MODE3, Mode3.AsWhole);
 
     return 0;
 }
@@ -243,7 +242,7 @@ int Memory::GetSel(U32& sel)
 {
     SDRAM_MODE3 Mode3;
 
-    Mode3.AsWhole = m_fpga->FpgaRegPeekInd(m_MemTetrNum, SDRAMnr_MODE3);
+    Mode3.AsWhole = m_fpga->FpgaRegPeekInd(m_memTrd.number, SDRAMnr_MODE3);
     sel = Mode3.ByBits.SelIn;
     sel += Mode3.ByBits.SelOut << 8;
 
@@ -258,8 +257,8 @@ void Memory::Info(bool more)
 
     if(more) {
 
-        U32 mode1 = m_fpga->FpgaRegPeekInd(m_MemTetrNum, 0x9);
-        U32 status = (m_fpga->FpgaRegPeekDir(m_MemTetrNum, 0) & (0x1 << 11));
+        U32 mode1 = m_fpga->FpgaRegPeekInd(m_memTrd.number, 0x9);
+        U32 status = (m_fpga->FpgaRegPeekDir(m_memTrd.number, 0) & (0x1 << 11));
 
         fprintf(stderr, "DDR3 STATUS: 0x%x\n", status ? 1 : 0);
         fprintf(stderr, "SLOT ----- 0x%x\n", mode1 & 0x3);
@@ -283,16 +282,16 @@ void Memory::SetTarget(U32 trd, U32 target)
 
 void Memory::SetFifoMode(U32 mode)
 {
-    U32 mode2 = m_fpga->FpgaRegPeekInd(m_MemTetrNum, SDRAMnr_MODE);
+    U32 mode2 = m_fpga->FpgaRegPeekInd(m_memTrd.number, SDRAMnr_MODE);
     mode2 |= (mode << 4);
-    m_fpga->FpgaRegPokeInd(m_MemTetrNum, SDRAMnr_MODE, mode2);
+    m_fpga->FpgaRegPokeInd(m_memTrd.number, SDRAMnr_MODE, mode2);
 
-    m_fpga->FpgaRegPokeInd(m_MemTetrNum, SDRAMnr_ENDADDRL, 0);
-    m_fpga->FpgaRegPokeInd(m_MemTetrNum, SDRAMnr_ENDADDRH, 0);
-    m_fpga->FpgaRegPokeInd(m_MemTetrNum, SDRAMnr_STADDRL, 0);
-    m_fpga->FpgaRegPokeInd(m_MemTetrNum, SDRAMnr_STADDRH, 0);
-    m_fpga->FpgaRegPokeInd(m_MemTetrNum, SDRAMnr_RDADDRL, 0);
-    m_fpga->FpgaRegPokeInd(m_MemTetrNum, SDRAMnr_RDADDRH, 0);
+    m_fpga->FpgaRegPokeInd(m_memTrd.number, SDRAMnr_ENDADDRL, 0);
+    m_fpga->FpgaRegPokeInd(m_memTrd.number, SDRAMnr_ENDADDRH, 0);
+    m_fpga->FpgaRegPokeInd(m_memTrd.number, SDRAMnr_STADDRL, 0);
+    m_fpga->FpgaRegPokeInd(m_memTrd.number, SDRAMnr_STADDRH, 0);
+    m_fpga->FpgaRegPokeInd(m_memTrd.number, SDRAMnr_RDADDRL, 0);
+    m_fpga->FpgaRegPokeInd(m_memTrd.number, SDRAMnr_RDADDRH, 0);
 }
 
 //-----------------------------------------------------------------------------
@@ -301,17 +300,17 @@ void Memory::SetReadMode(U32 mode)
 {
     SDRAM_MODE mode10;
 
-    mode10.AsWhole = m_fpga->FpgaRegPeekInd(m_MemTetrNum, SDRAMnr_MODE);
+    mode10.AsWhole = m_fpga->FpgaRegPeekInd(m_memTrd.number, SDRAMnr_MODE);
     mode10.ByBits.ReadMode = mode;
-    m_fpga->FpgaRegPokeInd(m_MemTetrNum, SDRAMnr_MODE, mode10.AsWhole);
+    m_fpga->FpgaRegPokeInd(m_memTrd.number, SDRAMnr_MODE, mode10.AsWhole);
 }
 
 //-----------------------------------------------------------------------------
 
 U32 Memory::GetEndAddr()
 {
-    U32 end_addr = (m_fpga->FpgaRegPeekInd(m_MemTetrNum, SDRAMnr_ENDADDRL) & 0xffff);
-    end_addr |= (m_fpga->FpgaRegPeekInd(m_MemTetrNum, SDRAMnr_ENDADDRH) << 16);
+    U32 end_addr = (m_fpga->FpgaRegPeekInd(m_memTrd.number, SDRAMnr_ENDADDRL) & 0xffff);
+    end_addr |= (m_fpga->FpgaRegPeekInd(m_memTrd.number, SDRAMnr_ENDADDRH) << 16);
     return end_addr;
 }
 
@@ -319,8 +318,8 @@ U32 Memory::GetEndAddr()
 
 U32 Memory::GetTrigCnt()
 {
-    U32 trig_cnt = (m_fpga->FpgaRegPeekInd(m_MemTetrNum, SDRAMnr_TRIGCNTL) & 0xffff);
-    trig_cnt |= (m_fpga->FpgaRegPeekInd(m_MemTetrNum, SDRAMnr_TRIGCNTH) << 16);
+    U32 trig_cnt = (m_fpga->FpgaRegPeekInd(m_memTrd.number, SDRAMnr_TRIGCNTL) & 0xffff);
+    trig_cnt |= (m_fpga->FpgaRegPeekInd(m_memTrd.number, SDRAMnr_TRIGCNTH) << 16);
     return trig_cnt;
 }
 
@@ -336,8 +335,8 @@ void Memory::SetPostTrig(U32& trig_cnt)
         trig_cnt = max_trig_cnt;
     trig_cnt = (trig_cnt >> 1) << 1; // align on 2 words
 
-    m_fpga->FpgaRegPokeInd(m_MemTetrNum, SDRAMnr_TRIGCNTL, (trig_cnt & 0xffff));
-    m_fpga->FpgaRegPokeInd(m_MemTetrNum, SDRAMnr_TRIGCNTH, (trig_cnt >> 16));
+    m_fpga->FpgaRegPokeInd(m_memTrd.number, SDRAMnr_TRIGCNTL, (trig_cnt & 0xffff));
+    m_fpga->FpgaRegPokeInd(m_memTrd.number, SDRAMnr_TRIGCNTH, (trig_cnt >> 16));
 }
 
 //-----------------------------------------------------------------------------
@@ -351,8 +350,8 @@ void Memory::SetStartAddr(U32 start_addr)
 
     start_addr = (start_addr >> 8) << 8; // align on 1024 bytes (256 32-bit words)
 
-    m_fpga->FpgaRegPokeInd(m_MemTetrNum, SDRAMnr_STADDRL, (start_addr & 0xffff));
-    m_fpga->FpgaRegPokeInd(m_MemTetrNum, SDRAMnr_STADDRH, (start_addr >> 16));
+    m_fpga->FpgaRegPokeInd(m_memTrd.number, SDRAMnr_STADDRL, (start_addr & 0xffff));
+    m_fpga->FpgaRegPokeInd(m_memTrd.number, SDRAMnr_STADDRH, (start_addr >> 16));
 
     // trig_cnt
     U32 tirg_cnt = GetTrigCnt();
@@ -367,8 +366,8 @@ void Memory::SetStartAddr(U32 start_addr)
 
 U32 Memory::GetStartAddr()
 {
-    U32 start_addr = (m_fpga->FpgaRegPeekInd(m_MemTetrNum, SDRAMnr_STADDRL) & 0xffff);
-    start_addr |= (m_fpga->FpgaRegPeekInd(m_MemTetrNum, SDRAMnr_STADDRH) << 16);
+    U32 start_addr = (m_fpga->FpgaRegPeekInd(m_memTrd.number, SDRAMnr_STADDRL) & 0xffff);
+    start_addr |= (m_fpga->FpgaRegPeekInd(m_memTrd.number, SDRAMnr_STADDRH) << 16);
     return start_addr;
 }
 
@@ -388,8 +387,8 @@ void Memory::SetMemSize(U32& active_size)
 
     U32 end_addr = start_addr + active_size - 1;
 
-    m_fpga->FpgaRegPokeInd(m_MemTetrNum, SDRAMnr_ENDADDRL, (end_addr & 0xffff));
-    m_fpga->FpgaRegPokeInd(m_MemTetrNum, SDRAMnr_ENDADDRH, (end_addr >> 16));
+    m_fpga->FpgaRegPokeInd(m_memTrd.number, SDRAMnr_ENDADDRL, (end_addr & 0xffff));
+    m_fpga->FpgaRegPokeInd(m_memTrd.number, SDRAMnr_ENDADDRH, (end_addr >> 16));
 
     fprintf(stderr, "start_addr = 0x%x\n", start_addr);
     fprintf(stderr, "end_addr = 0x%x\n", end_addr);
@@ -415,16 +414,16 @@ void Memory::SetReadAddr(U32 read_addr)
     //else
     read_addr = (read_addr >> 8) << 8; // align on 1024 bytes (256 32-bit words)
 
-    m_fpga->FpgaRegPokeInd(m_MemTetrNum, SDRAMnr_RDADDRL, (read_addr & 0xffff));
-    m_fpga->FpgaRegPokeInd(m_MemTetrNum, SDRAMnr_RDADDRH, (read_addr >> 16));
+    m_fpga->FpgaRegPokeInd(m_memTrd.number, SDRAMnr_RDADDRL, (read_addr & 0xffff));
+    m_fpga->FpgaRegPokeInd(m_memTrd.number, SDRAMnr_RDADDRH, (read_addr >> 16));
 }
 
 //-----------------------------------------------------------------------------
 
 U32 Memory::GetReadAddr()
 {
-    U32 read_addr = (m_fpga->FpgaRegPeekInd(m_MemTetrNum, SDRAMnr_RDADDRL) & 0xffff);
-    read_addr |= (m_fpga->FpgaRegPeekInd(m_MemTetrNum, SDRAMnr_RDADDRH) << 16);
+    U32 read_addr = (m_fpga->FpgaRegPeekInd(m_memTrd.number, SDRAMnr_RDADDRL) & 0xffff);
+    read_addr |= (m_fpga->FpgaRegPeekInd(m_memTrd.number, SDRAMnr_RDADDRH) << 16);
     return read_addr;
 }
 
@@ -434,7 +433,7 @@ U32 Memory::GetReadAddr()
 bool Memory::AcqComplete()
 {
     SDRAM_STATUS status;
-    status.AsWhole = m_fpga->FpgaRegPeekDir(m_MemTetrNum, 0x0);
+    status.AsWhole = m_fpga->FpgaRegPeekDir(m_memTrd.number, 0x0);
     return status.ByBits.AcqComplete;
 }
 
@@ -442,14 +441,14 @@ bool Memory::AcqComplete()
 
 void Memory::FlagClear()
 {
-    m_fpga->FpgaRegPokeInd(m_MemTetrNum, SDRAMnr_FLAGCLR, 0x2000);
+    m_fpga->FpgaRegPokeInd(m_memTrd.number, SDRAMnr_FLAGCLR, 0x2000);
 }
 
 //-----------------------------------------------------------------------------
 
 void Memory::Enable(bool enable)
 {
-    U32 mode0 = m_fpga->FpgaRegPeekInd(m_MemTetrNum, 0);
+    U32 mode0 = m_fpga->FpgaRegPeekInd(m_memTrd.number, 0);
 
     if(enable) {
         mode0 |= (1 << 5);
@@ -457,7 +456,7 @@ void Memory::Enable(bool enable)
         mode0 &= ~(1 << 5);
     }
 
-    m_fpga->FpgaRegPokeInd(m_MemTetrNum, 0, mode0);
+    m_fpga->FpgaRegPokeInd(m_memTrd.number, 0, mode0);
 }
 
 //-----------------------------------------------------------------------------
@@ -465,7 +464,7 @@ void Memory::Enable(bool enable)
 bool Memory::PassMemEnd()
 {
     SDRAM_STATUS status;
-    status.AsWhole = m_fpga->FpgaRegPeekDir(m_MemTetrNum, 0x0);
+    status.AsWhole = m_fpga->FpgaRegPeekDir(m_memTrd.number, 0x0);
     return status.ByBits.PassMem;
 }
 
@@ -492,7 +491,7 @@ typedef union _ADM2IF_STATUS {
 /*
 U32 Memory::GetData(void *Buffer, U32 BufferSize)
 {
-    U32 HalfFifoSize = (m_fpga->FpgaRegPeekInd(m_MemTetrNum, 0x104) << 2);
+    U32 HalfFifoSize = (m_fpga->FpgaRegPeekInd(m_memTrd.number, 0x104) << 2);
     U32 num = BufferSize / HalfFifoSize;
     U32 tail_bytes = BufferSize % HalfFifoSize;
     U8* buf = (U8*)Buffer;
@@ -505,11 +504,11 @@ U32 Memory::GetData(void *Buffer, U32 BufferSize)
         // когда флаг HalfFull=0, то есть пол-FIFO заполнено, то читаю
         do
         {
-            status.AsWhole = m_fpga->FpgaRegPeekDir(m_MemTetrNum, 0);
+            status.AsWhole = m_fpga->FpgaRegPeekDir(m_memTrd.number, 0);
 
         } while(status.ByBits.HalfFull);
 
-        m_fpga->FpgaReadRegBufDir(m_MemTetrNum,0x1,buf,HalfFifoSize);
+        m_fpga->FpgaReadRegBufDir(m_memTrd.number,0x1,buf,HalfFifoSize);
 
         buf += HalfFifoSize;
         total += HalfFifoSize;
@@ -518,11 +517,11 @@ U32 Memory::GetData(void *Buffer, U32 BufferSize)
     {
         do
         {
-            status.AsWhole = m_fpga->FpgaRegPeekDir(m_MemTetrNum, 0);
+            status.AsWhole = m_fpga->FpgaRegPeekDir(m_memTrd.number, 0);
 
         } while(status.ByBits.HalfFull);
 
-        m_fpga->FpgaReadRegBufDir(m_MemTetrNum,0x1,buf,tail_bytes);
+        m_fpga->FpgaReadRegBufDir(m_memTrd.number,0x1,buf,tail_bytes);
 
         total += tail_bytes;
     }
@@ -604,7 +603,7 @@ void Memory::PrepareDDR3()
     U32		spd_addr[]={ 4, 5, 7, 8 };
     U32		spd_data[sizeof(spd_addr)/sizeof(U32)];
 
-    U32		DDR2_trdNo = m_MemTetrNum;
+    U32		DDR2_trdNo = m_memTrd.number;
 
     m_fpga->FpgaRegPokeInd(DDR2_trdNo, 0x0, 0x3);	// MODE0
     m_fpga->FpgaRegPokeInd(DDR2_trdNo, 0x0, 0x0);	// MODE0
@@ -795,3 +794,39 @@ void Memory::PrepareDDR3()
 
 //-----------------------------------------------------------------------------
 
+void Memory::start()
+{
+    m_fpga->FpgaRegPokeInd(m_memTrd.number, 0x0, 0x2038);
+}
+
+//-----------------------------------------------------------------------------
+
+void Memory::stop()
+{
+    m_fpga->FpgaRegPokeInd(m_memTrd.number, 0x0, 0x0);
+}
+
+//-----------------------------------------------------------------------------
+
+void Memory::reset_fifo()
+{
+    m_fpga->FpgaRegPokeInd(m_memTrd.number, 0x0, 0x2);
+    IPC_delay(1);
+    m_fpga->FpgaRegPokeInd(m_memTrd.number, 0x0, 0x0);
+}
+
+//-----------------------------------------------------------------------------
+
+u16 Memory::status()
+{
+    return (m_fpga->FpgaRegPeekDir(m_memTrd.number, 0x0) & 0xFFFF);
+}
+
+//-----------------------------------------------------------------------------
+
+void Memory::setup(U32 mem_mode, U32 PretrigMode, U32& PostTrigSize, U32& Buf_size)
+{
+    setMemory(mem_mode, PretrigMode, PostTrigSize, Buf_size);
+}
+
+//-----------------------------------------------------------------------------

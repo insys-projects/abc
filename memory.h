@@ -5,6 +5,7 @@
 #include "gipcy.h"
 #include "utypes.h"
 #include "sdramregs.h"
+#include "fpga.h"
 
 //-----------------------------------------------------------------------------
 
@@ -40,6 +41,14 @@ public:
     explicit Memory(Fpga *fpga);
     virtual ~Memory();
 
+    void start();
+    void stop();
+    void reset_fifo();
+    void setup(U32 mem_mode, U32 PretrigMode, U32& PostTrigSize, U32& Buf_size);
+    u16  status();
+
+private:
+
     bool setMemory(U32 mem_mode, U32 PretrigMode, U32& PostTrigSize, U32& Buf_size);
     bool AcqComplete();
     void Enable(bool enable);
@@ -66,13 +75,10 @@ public:
     void FlagClear();
     void PrepareDDR3();
 
-private:
-
-    class Fpga*     m_fpga;
-    U32             m_MemTetrNum;
-    U32             m_dwPhysMemSize; // physical memory size on device in 32-bit words
-    U32             m_mode;
-
+    class Fpga*      m_fpga;
+    fpga_trd_t       m_memTrd;
+    U32              m_dwPhysMemSize; // physical memory size on device in 32-bit words
+    U32              m_mode;
     DDR3SDRAMSRV_CFG m_DDR3;
 };
 
