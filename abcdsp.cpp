@@ -9,6 +9,7 @@
 #include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 #ifdef __linux__
 #include <unistd.h>
 #include <pthread.h>
@@ -256,27 +257,6 @@ bool abcdsp::writeBuffer(U32 DmaChan, IPC_handle file, int fpos)
 
 //-----------------------------------------------------------------------------
 
-U32 calc_stmode(const struct app_params_t& params)
-{
-    U32 stmode = 0x0;
-
-    if(params.AdcStartBaseSource) {
-        stmode |= 0x87;
-    } else {
-        stmode &= ~0x80;
-    }
-
-    if(params.AdcStartBaseInverting) {
-        stmode |= 0x40;
-    } else {
-        stmode &= ~0x40;
-    }
-
-    return stmode;
-}
-
-//-----------------------------------------------------------------------------
-
 void abcdsp::dataFromAdc(struct app_params_t& params)
 {
     fprintf(stderr, "Start testing DMA: %d\n", params.dmaChannel);
@@ -336,8 +316,13 @@ void abcdsp::dataFromAdc(struct app_params_t& params)
     else
         RegPokeInd(m_adcTrd.number, 0x1A, 0x0);
 
-    //fprintf(stderr, "Set ADC start mode\n");
-    //RegPokeInd(m_adcTrd.number, 0x17, (0x3 << 4));
+    fprintf(stderr, "Set ADC start mode\n");
+    U32 stmode = (params.AdcStopInverting << 14) |
+                 (params.AdcStopSource << 8) |
+                 (params.AdcStartMode << 7) |
+                 (params.AdcStartBaseInverting << 6) |
+                 params.AdcStartBaseSource;
+    RegPokeInd(m_adcTrd.number, 0x5, stmode);
 
     fprintf(stderr, "Start DMA channel\n");
     startDma(params.dmaChannel, 0);
@@ -376,9 +361,7 @@ void abcdsp::dataFromAdc(struct app_params_t& params)
         resetFifo(m_adcTrd.number);
         resetDmaFifo(params.dmaChannel);
         startDma(params.dmaChannel,0);
-        IPC_delay(10);
         RegPokeInd(m_adcTrd.number,0,0x2038);
-        IPC_delay(10);
 
         if(params.AdcCycle)
             continue;
@@ -415,7 +398,6 @@ void abcdsp::dataFromAdcToMemAsMem(struct app_params_t& params)
     fprintf(stderr, "Allocate DMA memory\n");
     allocateDmaMemory(params.dmaChannel, &sSCA);
 
-
     // prepare ISVI files for non masked FPGA
     IPC_handle isviFile;
     string flgName;
@@ -444,8 +426,6 @@ void abcdsp::dataFromAdcToMemAsMem(struct app_params_t& params)
         setDmaSource(params.dmaChannel, m_memTrd.number);
         setDmaRequestFlag(params.dmaChannel, BRDstrm_DRQ_HALF);
 
-        //brd->RegPokeInd(j, m_adcTrd.number, 0xC, 0x100);
-
         resetFifo(m_adcTrd.number);
         resetFifo(m_memTrd.number);
         resetDmaFifo(params.dmaChannel);
@@ -454,27 +434,22 @@ void abcdsp::dataFromAdcToMemAsMem(struct app_params_t& params)
 
         DDR3()->setMemory(1, 0, PostTrigSize, MemBufSize);
 
-        U32 stmode = calc_stmode(params);
+        U32 stmode = (params.AdcStopInverting << 14) |
+                     (params.AdcStopSource << 8) |
+                     (params.AdcStartMode << 7) |
+                     (params.AdcStartBaseInverting << 6) |
+                     params.AdcStartBaseSource;
 
         RegPokeInd(m_adcTrd.number, 0x5, stmode);
-        RegPokeInd(m_adcTrd.number, 0x17, (0x3 << 4));
-        resetFifo(m_adcTrd.number);
-        resetFifo(m_memTrd.number);
         RegPokeInd(m_memTrd.number, 0x0, 0x2038);
         RegPokeInd(m_adcTrd.number, 0x0, 0x2038);
 
         IPC_delay(1);
 
-        U32 mode01 = RegPeekInd(m_adcTrd.number, 0);
-        U32 mode02 = RegPeekInd(m_memTrd.number, 0);
-        mode01 = mode01;
-        mode02 = mode02;
-
         // Save MEM data in ISVI file for non masked FPGA
-        //fprintf(stderr, "\n");
         for(unsigned counter = 0; counter < params.dmaBuffersCount; counter++) {
 
-            startDma(params.dmaChannel, 0x0); IPC_delay(10);
+            startDma(params.dmaChannel, 0x0);
 
             if( waitDmaBuffer(params.dmaChannel, 4000) < 0 ) {
 
@@ -503,8 +478,6 @@ void abcdsp::dataFromAdcToMemAsMem(struct app_params_t& params)
         resetDmaFifo(params.dmaChannel);
 
         ++pass_counter;
-
-        IPC_delay(500);
 
         if(params.AdcCycle)
             continue;
@@ -875,10 +848,19 @@ void abcdsp::checkMainDataStream(U32 dmaBlockSize, const std::vector<void*>& Buf
 
 void abcdsp::specAdcSettings(struct app_params_t& params)
 {
-    FPGA()->writeSpdDev(m_adcTrd.number, 0x0, 0x1, 0x8, (1 << 12));
-    FPGA()->writeSpdDev(m_adcTrd.number, 0x0, 0x3, (params.AdcBias0 >> 8) & 0x1, (1 << 12));
-    FPGA()->writeSpdDev(m_adcTrd.number, 0x0, 0x4, (params.AdcBias0 & 0xFF), (1 << 12));
-    FPGA()->writeSpdDev(m_adcTrd.number, 0x0, 0x5, 0x28, (1 << 12));
+    // ADC0
+    unsigned sign0 = (params.AdcBias0 < 0) ? 1 : 0;
+    FPGA()->writeSpdDev(m_adcTrd.number, 0x0, 0x1, 0x8);
+    FPGA()->writeSpdDev(m_adcTrd.number, 0x0, 0x3, sign0);
+    FPGA()->writeSpdDev(m_adcTrd.number, 0x0, 0x4, (abs(params.AdcBias0) & 0xFF));
+    FPGA()->writeSpdDev(m_adcTrd.number, 0x0, 0x5, 0x28);
+
+    // ADC1
+    unsigned sign1 = (params.AdcBias1 < 0) ? 1 : 0;
+    FPGA()->writeSpdDev(m_adcTrd.number, 0x0, 0x1, 0x8, (1<<4));
+    FPGA()->writeSpdDev(m_adcTrd.number, 0x0, 0x3, sign1, (1<<4));
+    FPGA()->writeSpdDev(m_adcTrd.number, 0x0, 0x4, (abs(params.AdcBias1) & 0xFF), (1<<4));
+    FPGA()->writeSpdDev(m_adcTrd.number, 0x0, 0x5, 0x28, (1<<4));
 }
 
 //-----------------------------------------------------------------------------
