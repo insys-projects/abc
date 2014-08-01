@@ -25,6 +25,7 @@ dac::dac(Fpga *fpga, const app_params_t& params) : m_fpga(fpga), m_trdprog(0)
     g_aDac[0].sampleSizeb = 2;
     g_aDac[0].samplesPerChannel = 0;
     g_aDac[0].signalType = 0;
+    g_aDac[0].nAutoRestart = params.DacRestart;
 
     g_nIsDebugMarker = 0;
     g_nDacNum = 1;
@@ -46,8 +47,7 @@ dac::dac(Fpga *fpga, const app_params_t& params) : m_fpga(fpga), m_trdprog(0)
     m_fpga->FpgaRegPokeInd(m_dacTrd.number, 0x1A, params.DacTest);
 
     // STMODE
-    U32 stmode = (params.DacRestart << 15) |
-                 (params.DacStopInverting << 14) |
+    U32 stmode = (params.DacStopInverting << 14) |
                  (params.DacStopSource << 8) |
                  (params.DacStartMode << 7) |
                  (params.DacStartBaseInverting << 6) |
@@ -274,6 +274,8 @@ S32 dac::FifoOutputCPUStart( S32 isCycle )
     U16 status = m_fpga->FpgaRegPeekDir(m_dacTrd.number, 0x0);
     fprintf(stderr, "0) STATUS = 0x%.4X\n", status);
 
+
+
     for( ii=g_nDacNum-1; ii>=0; ii-- )
     {
         idx = g_idx[ii];
@@ -298,7 +300,10 @@ S32 dac::FifoOutputCPUStart( S32 isCycle )
 
         IPC_delay(100);
 
-        m_fpga->FpgaWriteRegBufDir(m_dacTrd.number, 0x1, g_aDac[idx].pBuf, g_aDac[idx].outBufSizeb);
+        if(isCycle)
+          m_fpga->FpgaWriteRegBufDir(m_dacTrd.number, 0x1, g_aDac[idx].pBuf, g_aDac[idx].outBufSizeb);
+        else
+          m_fpga->FpgaWriteRegBufDir(m_dacTrd.number, 0x1, g_aDac[idx].pBuf, g_aDac[idx].outBufSizeb+8);
 /*
         // Debug signal
         U16 testBuf[] = { 0x0, 0x5A7F, 0x7FFF, 0x5A7F, 0x0, 0xA583, 0x8000, 0xA583, };
@@ -306,8 +311,15 @@ S32 dac::FifoOutputCPUStart( S32 isCycle )
             m_fpga->FpgaWriteRegBufDir(m_dacTrd.number, 0x1, testBuf, sizeof(testBuf));
         }
 */
+        // Add Autorestart bit in STMODE after fill FIFO
+        if(g_aDac[idx].nAutoRestart) {
+          U32 stmode = m_fpga->FpgaRegPeekInd(m_dacTrd.number, 0x5);
+          stmode |= (1 << 15);
+          m_fpga->FpgaRegPokeInd(m_dacTrd.number, 0x5, stmode);
+        }
+
         mode0 = m_fpga->FpgaRegPeekInd(m_dacTrd.number, 0x0);
-        mode0 |= MODE0_START;
+        mode0 |= (MODE0_START | MODE0_MASTER);
         m_fpga->FpgaRegPokeInd(m_dacTrd.number, 0x0, mode0); // разрешение работы ЦАП
     }
 
@@ -352,12 +364,14 @@ S32 dac::WorkMode3()
         //
         // Создать буфер для сигнала
         //
-        g_aDac[ii].pBuf = malloc( g_aDac[ii].outBufSizeb );
+        g_aDac[ii].pBuf = malloc( g_aDac[ii].outBufSizeb + 8);
         if( !g_aDac[ii].pBuf )
         {
             BRDC_printf( _BRDC("ERROR: No enougth memory, dacNo = %d"), ii );
             return -1;
         }
+
+        memset(g_aDac[ii].pBuf, 0, g_aDac[ii].outBufSizeb + 8);
 
         CalcSignal( g_aDac[ii].pBuf, g_aDac[ii].samplesPerChannel, ii, 0 );
     }
@@ -421,7 +435,7 @@ S32 dac::WorkMode5()
         //
         //
         //
-        g_aDac[ii].pBuf = malloc( g_aDac[ii].outBufSizeb );
+        g_aDac[ii].pBuf = malloc( g_aDac[ii].outBufSizeb);
         if( !g_aDac[ii].pBuf )
         {
             BRDC_printf( _BRDC("ERROR: No enougth memory, dacNo = %d"), ii );
