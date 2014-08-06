@@ -390,9 +390,9 @@ void Memory::SetMemSize(U32& active_size)
     m_fpga->FpgaRegPokeInd(m_memTrd.number, SDRAMnr_ENDADDRL, (end_addr & 0xffff));
     m_fpga->FpgaRegPokeInd(m_memTrd.number, SDRAMnr_ENDADDRH, (end_addr >> 16));
 
-    fprintf(stderr, "start_addr = 0x%x\n", start_addr);
-    fprintf(stderr, "end_addr = 0x%x\n", end_addr);
-    fprintf(stderr, "active_size = 0x%x\n", active_size);
+    //fprintf(stderr, "start_addr = 0x%x\n", start_addr);
+    //fprintf(stderr, "end_addr = 0x%x\n", end_addr);
+    //fprintf(stderr, "active_size = 0x%x\n", active_size);
 
     // trig_cnt
     U32 tirg_cnt = GetTrigCnt();
@@ -560,7 +560,7 @@ bool Memory::setMemory(U32 mem_mode, U32 PretrigMode, U32& PostTrigSize, U32& Bu
         SetMemSize(mem_size);
 
         Buf_size = (mem_size << 2); // получить фактический размер активной зоны в байтах
-        fprintf(stderr, "SDRAM buffer size: %d bytes\n", Buf_size);
+        //fprintf(stderr, "SDRAM buffer size: %d bytes\n", Buf_size);
 
         if(PretrigMode == 3)
         {
