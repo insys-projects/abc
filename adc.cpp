@@ -93,9 +93,13 @@ void adc::stop()
 
 void adc::reset_fifo()
 {
-    m_fpga->FpgaRegPokeInd(m_adcTrd.number, 0x0, 0x2);
+    U32 mode0 = m_fpga->FpgaRegPeekInd(m_adcTrd.number, 0x0);
+
+    mode0 |= 0x2;
+    m_fpga->FpgaRegPokeInd(m_adcTrd.number, 0x0, mode0);
     IPC_delay(1);
-    m_fpga->FpgaRegPokeInd(m_adcTrd.number, 0x0, 0x0);
+    mode0 &= ~0x2;
+    m_fpga->FpgaRegPokeInd(m_adcTrd.number, 0x0, mode0);
 }
 
 //-------------------------------------------------------------------------------------

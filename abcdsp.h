@@ -121,6 +121,8 @@ private:
     dac*                     m_dac;
     adc*                     m_adc;
     Memory*                  m_mem;
+    ltc2991*                 m_ltc1;
+    ltc2991*                 m_ltc2;
 
     fpga_trd_t               m_mainTrd;
     fpga_trd_t               m_uartTrd;

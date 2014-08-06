@@ -30,6 +30,7 @@ typedef struct
     float			dSignalFreq;
     U32				nAutoRestart;
     U32				nDacSincScale;
+    U32				nDacCycle;
 
     void			*pBuf;
     BRDctrl_StreamCBufAlloc rBufAlloc;
@@ -51,10 +52,16 @@ public:
     dac(Fpga *fpga, const struct app_params_t& params );
     virtual ~dac();
 
+    void start();
+    void stop();
+    void reset_fifo();
+    u16  status();
+
+private:
+    dac();
     S32 CalcSignalToChan( void *pvBuf, S32 nSamples, S32 sampleWidth, float twiddle, float ampl, float *pPhase );
     S32 CorrectOutFreq();
-    S32 CalcSignalToBuf( void *pvBuf, S32 nSamples, S32 sampleWidth, float twiddle,
-                         float aAmpl, float *aPhase );
+    S32 CalcSignalToBuf( void *pvBuf, S32 nSamples, S32 sampleWidth, float twiddle, float aAmpl, float *aPhase );
     S32 CalcSignal( void *pvBuf, S32 nSamples );
     S32 FifoOutputCPUStart( S32 isCycle );
     bool defaultDacSettings();
@@ -62,8 +69,6 @@ public:
     S32 WorkMode5();
     float dacScale();
 
-private:
-    dac();
     Fpga* m_fpga;
     fpga_trd_t m_dacTrd;
     trdprog*   m_trdprog;

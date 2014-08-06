@@ -64,6 +64,9 @@ abcdsp::abcdsp(const struct app_params_t& params) : m_dac(0), m_adc(0), m_params
     m_dac = new dac(m_fpga, params);
     m_mem = m_fpga->ddr3();
 
+    m_ltc1 = new ltc2991(0x1, 0x48);
+    m_ltc2 = new ltc2991(0x1, 0x49);
+
     fprintf(stderr, "====================================================\n");
 }
 
@@ -71,6 +74,8 @@ abcdsp::abcdsp(const struct app_params_t& params) : m_dac(0), m_adc(0), m_params
 
 abcdsp::~abcdsp()
 {
+    delete m_ltc2;
+    delete m_ltc1;
     delete m_dac;
     delete m_adc;
     delete m_fpga;
@@ -307,11 +312,7 @@ void abcdsp::dataFromAdc(struct app_params_t& params)
     setDmaDirection(params.dmaChannel, BRDstrm_DIR_IN);
 
     //----------------------------------------------------------------
-    if(params.DacCycle) {
-        m_dac->WorkMode5();
-    } else {
-        m_dac->WorkMode3();
-    }
+    m_dac->start();
     //----------------------------------------------------------------
 
     fprintf(stderr, "Start DMA channel\n");
@@ -323,6 +324,10 @@ void abcdsp::dataFromAdc(struct app_params_t& params)
     unsigned counter = 0;
 
     while(!exitFlag()) {
+
+        float t1 = m_ltc1->measure_own_t();
+        float t2 = m_ltc2->measure_own_t();
+        float t3 = m_ltc1->measure_differential_t(1);
 
         // save ADC data into ISVI files for non masked FPGA
         if( waitDmaBuffer(params.dmaChannel, 2000) < 0 ) {
@@ -343,7 +348,7 @@ void abcdsp::dataFromAdc(struct app_params_t& params)
             u32* value = (u32*)dmaBlocks.at(j);
             fprintf(stderr, " 0x%.8x ", value[0]);
         }
-        fprintf(stderr, "]\r");
+        fprintf(stderr, "] t1 = %.2f, t2 = %.2f, t3 = %.2f\r", t1, t2, t3);
 
         m_adc->stop();
         m_adc->reset_fifo();
@@ -408,11 +413,7 @@ void abcdsp::dataFromAdcToMemAsMem(struct app_params_t& params)
     unsigned pass_counter = 0;
 
     //----------------------------------------------------------------
-    if(params.DacCycle) {
-        m_dac->WorkMode5();
-    } else {
-        m_dac->WorkMode3();
-    }
+    m_dac->start();
     //----------------------------------------------------------------
 
     while(!exitFlag()) {
@@ -432,6 +433,10 @@ void abcdsp::dataFromAdcToMemAsMem(struct app_params_t& params)
 
         IPC_delay(1);
 
+        float t1 = m_ltc1->measure_own_t();
+        float t2 = m_ltc2->measure_own_t();
+        float t3 = m_ltc1->measure_differential_t(1);
+
         // Save MEM data in ISVI file for non masked FPGA
         for(unsigned counter = 0; counter < params.dmaBuffersCount; counter++) {
 
@@ -445,7 +450,7 @@ void abcdsp::dataFromAdcToMemAsMem(struct app_params_t& params)
             } else {
 
                 writeBuffer(params.dmaChannel, isviFile, counter * params.dmaBlockSize * params.dmaBlockCount);
-                fprintf(stderr, "Write DMA buffer: %d\r", counter);
+                fprintf(stderr, "Write DMA buffer: %d. t1 = %.2f, t2 = %.2f, t3 = %.2f\r", counter, t1, t2, t3);
             }
 
             stopDma(params.dmaChannel);
@@ -991,28 +996,31 @@ bool abcdsp::uartTest(U8 speed, bool loopback)
 
 bool abcdsp::ltcTest()
 {
-    ltc2991 ltc(0x1, 0x48);
-
-    ltc.measure_vcc(1000);
-    ltc.measure_own_t(1000);
-    ltc.measure_single(3, 1000);
-    ltc.measure_single(4, 1000);
-    ltc.measure_single(5, 1000);
-    ltc.measure_single(6, 1000);
-    ltc.measure_single(7, 1000);
+    m_ltc1->measure_print_enable(true);
+    m_ltc1->measure_differential_t(1);
+    m_ltc1->measure_vcc(1000);
+    m_ltc1->measure_own_t(1000);
+    m_ltc1->measure_single(3, 1000);
+    m_ltc1->measure_single(4, 1000);
+    m_ltc1->measure_single(5, 1000);
+    m_ltc1->measure_single(6, 1000);
+    m_ltc1->measure_single(7, 1000);
+    m_ltc1->measure_print_enable(false);
 
     fprintf(stderr, "\n");
 
-    ltc2991 ltc1(0x1, 0x49);
-
-    ltc1.measure_vcc(1000);
-    ltc1.measure_own_t(1000);
-    ltc1.measure_single(1, 1000);
-    ltc1.measure_single(2, 1000);
-    ltc1.measure_single(3, 1000);
-    ltc1.measure_single(4, 1000);
-    ltc1.measure_single(5, 1000);
-    ltc1.measure_single(6, 1000);
+    m_ltc2->measure_print_enable(true);
+    m_ltc2->measure_vcc(1000);
+    m_ltc2->measure_own_t(1000);
+    m_ltc2->measure_single(1, 1000);
+    m_ltc2->measure_single(2, 1000);
+    m_ltc2->measure_single(3, 1000);
+    m_ltc2->measure_single(4, 1000);
+    m_ltc2->measure_single(5, 1000);
+    m_ltc2->measure_single(6, 1000);
+    m_ltc2->measure_print_enable(false);
 
     return true;
 }
+
+//-----------------------------------------------------------------------------

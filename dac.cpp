@@ -22,6 +22,7 @@ dac::dac(Fpga *fpga, const app_params_t& params) : m_fpga(fpga), m_trdprog(0)
     g_aDac.samplesPerChannel = 0;
     g_aDac.nAutoRestart = params.DacRestart;
     g_aDac.nDacSincScale = params.DacSincScale;
+    g_aDac.nDacCycle = params.DacCycle;
 
     g_nSamplesPerChannel = params.DacSamplesPerChannel;
 
@@ -419,3 +420,40 @@ float dac::dacScale()
 }
 
 //-----------------------------------------------------------------------------
+
+void dac::start()
+{
+    if(g_aDac.nDacCycle)
+        WorkMode5();
+    else
+        WorkMode3();
+}
+
+//-------------------------------------------------------------------------------------
+
+void dac::stop()
+{
+    m_fpga->FpgaRegPokeInd(m_dacTrd.number, 0x0, 0x0);
+}
+
+//-------------------------------------------------------------------------------------
+
+void dac::reset_fifo()
+{
+    U32 mode0 = m_fpga->FpgaRegPeekInd(m_dacTrd.number, 0x0);
+
+    mode0 |= MODE0_RST_FIFO;
+    m_fpga->FpgaRegPokeInd(m_dacTrd.number, 0x0, mode0);
+    IPC_delay(1);
+    mode0 &= ~MODE0_RST_FIFO;
+    m_fpga->FpgaRegPokeInd(m_dacTrd.number, 0x0, mode0);
+}
+
+//-------------------------------------------------------------------------------------
+
+u16 dac::status()
+{
+    return (m_fpga->FpgaRegPeekDir(m_dacTrd.number, 0x0) & 0xFFFF);
+}
+
+//-------------------------------------------------------------------------------------
