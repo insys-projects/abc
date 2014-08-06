@@ -201,6 +201,12 @@ bool getParams(int argc, char *argv[], struct app_params_t& param)
     }
     param.DacRestart = BRDC_strtol(Buffer,0,10);
 
+    res = IPC_getPrivateProfileString(SECTION_NAME, _BRDC("DacSincScale"), _BRDC("0"), Buffer, sizeof(Buffer), iniFilePath);
+    if(!res) {
+        fprintf(stderr, "Parameter: DacSincScale - not found. Use default value\n");
+    }
+    param.DacSincScale = BRDC_strtol(Buffer,0,10);
+
     //================================================
 
     res = IPC_getPrivateProfileString(SECTION_NAME, _BRDC("dmaChannel"), _BRDC("0x0"), Buffer, sizeof(Buffer), iniFilePath);
@@ -264,6 +270,7 @@ void showParams(struct app_params_t& param)
     fprintf(stderr, "DacStopSource:             %d\n", param.DacStopSource);
     fprintf(stderr, "DacStopInverting:          %d\n", param.DacStopInverting);
     fprintf(stderr, "DacRestart:                %d\n", param.DacRestart);
+    fprintf(stderr, "DacSincScale:              %d\n", param.DacSincScale);
     fprintf(stderr, " \n");
     fprintf(stderr, "dmaChannel:                0x%x\n", param.dmaChannel);
     fprintf(stderr, "dmaBlockSize:              0x%x\n", param.dmaBlockSize);

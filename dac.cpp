@@ -9,28 +9,21 @@
 
 dac::dac(Fpga *fpga, const app_params_t& params) : m_fpga(fpga), m_trdprog(0)
 {
-    g_aDac[0].aAmpl[0] = params.DacAmplitude0;
-    g_aDac[0].aPhase[0] = 0;
-    g_aDac[0].aPhaseKee[0] = 0;
-    g_aDac[0].aThdac[0] = 0;
-    g_aDac[0].aThdac[1] = 0;
-    g_aDac[0].chanMask = 0x1;
-    g_aDac[0].chanMaxNum = 0x1;
-    g_aDac[0].chanNum = 0x1;
-    g_aDac[0].dSamplingRate = params.SysSamplingRate;
-    g_aDac[0].dSignalFreq = params.DacSignalFreqHz;
-    g_aDac[0].nFifoSizeb = 8192*8;
-    g_aDac[0].outBufSizeb = 0;
-    g_aDac[0].pBuf = 0;
-    g_aDac[0].sampleSizeb = 2;
-    g_aDac[0].samplesPerChannel = 0;
-    g_aDac[0].signalType = 0;
-    g_aDac[0].nAutoRestart = params.DacRestart;
+    g_aDac.aAmpl = params.DacAmplitude0;
+    g_aDac.aPhase = 0;
+    g_aDac.aPhaseKee = 0;
+    g_aDac.aThdac = 0;
+    g_aDac.dSamplingRate = params.SysSamplingRate;
+    g_aDac.dSignalFreq = params.DacSignalFreqHz;
+    g_aDac.nFifoSizeb = 8192*8;
+    g_aDac.outBufSizeb = 0;
+    g_aDac.pBuf = 0;
+    g_aDac.sampleSizeb = 2;
+    g_aDac.samplesPerChannel = 0;
+    g_aDac.nAutoRestart = params.DacRestart;
+    g_aDac.nDacSincScale = params.DacSincScale;
 
-    g_nIsDebugMarker = 0;
-    g_nDacNum = 1;
     g_nSamplesPerChannel = params.DacSamplesPerChannel;
-    g_idx[0] = 0;
 
     // Search DAC TRD
     if(!m_fpga->fpgaTrd(0, 0xB9, m_dacTrd)) {
@@ -48,10 +41,10 @@ dac::dac(Fpga *fpga, const app_params_t& params) : m_fpga(fpga), m_trdprog(0)
 
     // STMODE
     U32 stmode = (params.DacStopInverting << 14) |
-                 (params.DacStopSource << 8) |
-                 (params.DacStartMode << 7) |
-                 (params.DacStartBaseInverting << 6) |
-                  params.DacStartBaseSource;
+            (params.DacStopSource << 8) |
+            (params.DacStartMode << 7) |
+            (params.DacStartBaseInverting << 6) |
+            params.DacStartBaseSource;
     m_fpga->FpgaRegPokeInd(m_dacTrd.number, 0x5, stmode);
 
     // DAC default settings
@@ -64,22 +57,17 @@ dac::dac(Fpga *fpga, const app_params_t& params) : m_fpga(fpga), m_trdprog(0)
 
 dac::~dac()
 {
-    for(int ii=0; ii<g_nDacNum; ii++)
-    {
-        U32 mode0 = m_fpga->FpgaRegPeekInd(m_dacTrd.number, 0x0);
-        mode0 &= ~MODE0_START;      // запрет работы ЦАП
-        mode0 |= MODE0_RST_FIFO;    // сброс FIFO ЦАП
-        m_fpga->FpgaRegPokeInd(m_dacTrd.number, 0x0, mode0);
-        free( g_aDac[ii].pBuf );
-    }
+    U32 mode0 = m_fpga->FpgaRegPeekInd(m_dacTrd.number, 0x0);
+    mode0 &= ~MODE0_START;      // запрет работы ЦАП
+    mode0 |= MODE0_RST_FIFO;    // сброс FIFO ЦАП
+    m_fpga->FpgaRegPokeInd(m_dacTrd.number, 0x0, mode0);
+    free( g_aDac.pBuf );
     delete m_trdprog;
 }
 
 //-------------------------------------------------------------------------------------
 
-S32 dac::CalcSignalToChan( void *pvBuf, S32 nSamples, S32 signalType,
-                      S32 sampleWidth, S32 chanIdx, S32 chanNum,
-                      float twiddle, float ampl, float *pPhase )
+S32 dac::CalcSignalToChan( void *pvBuf, S32 nSamples, S32 sampleWidth, float twiddle, float ampl, float *pPhase )
 {
     int			ii;
     float		phase = *pPhase;
@@ -88,40 +76,13 @@ S32 dac::CalcSignalToChan( void *pvBuf, S32 nSamples, S32 signalType,
     // Проверить аргументы
     //
     if( ampl < 0.0 )
-        switch( sampleWidth )
-        {
-            case 1: ampl = 128/2; break;
-            case 2: ampl = 32767/2; break;
-            case 4: ampl = 2147483647/2; break;
-        }
+        ampl = 32767;
+
+    if(g_aDac.nDacSincScale) {
+        ampl *= dacScale();
+    }
 
     fprintf(stderr, "ampl = %.2f\n", ampl);
-
-    //
-    // Отсчеты сигнала имеют размер 1 байт
-    //
-    if( sampleWidth == 1 )
-    {
-        S08		*pBuf = (S08*)pvBuf;
-
-        if( ampl < 0.0 )
-            ampl = 64.0;
-
-        pBuf += chanIdx;
-        for( ii=0; ii<nSamples; ii++ )
-        {
-            *pBuf  = (S08)floor(ampl * sin( phase ) + 0.5);
-            if( signalType == 2 )
-                *pBuf = (S08)(( *pBuf < 0.0 ) ? -ampl : +ampl);
-            pBuf  += chanNum;
-            phase += twiddle;
-        }
-        if( g_nIsDebugMarker )
-        {
-            pBuf = (S08*)pvBuf;
-            pBuf[ chanIdx + (nSamples-1)*chanNum ] = 0x7f;
-        }
-    }
 
     //
     // Отсчеты сигнала имеют размер 2 байта
@@ -129,49 +90,9 @@ S32 dac::CalcSignalToChan( void *pvBuf, S32 nSamples, S32 signalType,
     if( sampleWidth == 2 )
     {
         S16		*pBuf = (S16*)pvBuf;
-
-        if( ampl < 0.0 )
-            ampl = 16384.0;
-
-        pBuf += chanIdx;
         for( ii=0; ii<nSamples; ii++ )
         {
-            *pBuf  = (S16)floor(ampl * sin( phase ) + 0.5);
-            if( signalType == 2 )
-                *pBuf = (S16)(( *pBuf < 0.0 ) ? -ampl : +ampl);
-            pBuf  += chanNum;
-            phase += twiddle;
-        }
-        if( g_nIsDebugMarker )
-        {
-            pBuf = (S16*)pvBuf;
-            pBuf[ chanIdx + (nSamples-1)*chanNum ] = 0x7fff;
-        }
-    }
-
-    //
-    // Отсчеты сигнала имеют размер 4 байта
-    //
-    if( sampleWidth == 4 )
-    {
-        S32		*pBuf = (S32*)pvBuf;
-
-        if( ampl < 0.0 )
-            ampl = 1024.0 * 1024.0 * 1024.0;
-
-        pBuf += chanIdx;
-        for( ii=0; ii<nSamples; ii++ )
-        {
-            *pBuf  = (S32)floor(ampl * sin( phase ) + 0.5);
-            if( signalType == 2 )
-                *pBuf = (S32)(( *pBuf < 0.0 ) ? -ampl : +ampl);
-            pBuf  += chanNum;
-            phase += twiddle;
-        }
-        if( g_nIsDebugMarker )
-        {
-            pBuf = (S32*)pvBuf;
-            pBuf[ chanIdx + (nSamples-1)*chanNum ] = 0x7fffffff;
+            pBuf[ii] = (S16)floor(ampl * sin( twiddle * ii ) + 0.5);
         }
     }
 
@@ -182,82 +103,55 @@ S32 dac::CalcSignalToChan( void *pvBuf, S32 nSamples, S32 signalType,
 
 //-------------------------------------------------------------------------------------
 
-S32 dac::CorrectOutFreq( int idxDac )
+S32 dac::CorrectOutFreq()
 {
     float npi;			// Число периодов выходного синуса (пока не целое)
     float nnp;			// Число периодов выходного синуса (целое гарантировано)
     float delta;		// Поворачивающий фактор
     float freq;         // Скорректированная частота
 
-    delta = PI2 * g_aDac[idxDac].dSignalFreq / g_aDac[idxDac].dSamplingRate;
-    npi   = delta * (float)g_aDac[idxDac].samplesPerChannel / PI2;
+    delta = g_aDac.dSignalFreq / g_aDac.dSamplingRate;
+    npi   = delta * (float)g_aDac.samplesPerChannel;
     nnp   = floor(npi+0.5);
-    delta = PI2 * nnp / (float)g_aDac[idxDac].samplesPerChannel;
-    freq  = floor(delta * g_aDac[idxDac].dSamplingRate / PI2 + 0.5);
+    delta = nnp / (float)g_aDac.samplesPerChannel;
+    freq  = floor(delta * g_aDac.dSamplingRate + 0.5);
 
-    fprintf( stderr, "Desired Freq = %.2f Hz\n", g_aDac[idxDac].dSignalFreq );
+    fprintf( stderr, "Desired Freq = %.2f Hz\n", g_aDac.dSignalFreq );
     fprintf( stderr, "Real Freq = %.2f Hz\n", freq );
 
-    g_aDac[idxDac].dSignalFreq  = freq;
+    g_aDac.dSignalFreq  = freq;
 
     return 0;
 }
 
 //-------------------------------------------------------------------------------------
 
-S32 dac::CalcSignalToBuf( void *pvBuf, S32 nSamples, S32 signalType,
-                     S32 sampleWidth, S32 chanMask, S32 chanMaxNum,
-                     float twiddle, float *aAmpl, float *aPhase )
+S32 dac::CalcSignalToBuf( void *pvBuf, S32 nSamples, S32 sampleWidth,
+                          float twiddle, float aAmpl, float *aPhase )
 {
-    int			ii;
-    S32			chanNum;
-    S32			aChanNo[64];
-
     //
-    // Определить количество и номера выбранных каналов
+    // Сформировать сигнал
     //
-    chanNum = 0;
-    for( ii=0; ii<chanMaxNum; ii++ )
-        if( chanMask & (1<<ii) )
-            aChanNo[chanNum++] = ii;
-
-    //
-    // Сформировать сигнал в каждом выбранном канале
-    //
-    for( ii=0; ii<chanNum; ii++ )
-        CalcSignalToChan( pvBuf, nSamples, signalType, sampleWidth, ii, chanNum,
-        twiddle, aAmpl[aChanNo[ii]], &(aPhase[aChanNo[ii]]) );
+    CalcSignalToChan( pvBuf, nSamples, sampleWidth, twiddle, aAmpl, aPhase );
 
     return 0;
 }
 
 //-------------------------------------------------------------------------------------
 
-S32 dac::CalcSignal( void *pvBuf, S32 nSamples, int idxDac, int cnt )
+S32 dac::CalcSignal( void *pvBuf, S32 nSamples )
 {
     S32				err;
-    int				ii;
     float			twiddle;
 
-    //
-    // Если первый буфер, запомнить начальную фазу
-    //
-    if( cnt==0 )
-        for( ii=0; ii<MAX_CHAN; ii++ )
-            g_aDac[idxDac].aPhaseKee[ii] = g_aDac[idxDac].aPhase[ii];
-
-
-    twiddle = PI2 * g_aDac[idxDac].dSignalFreq / g_aDac[idxDac].dSamplingRate;
+    twiddle = PI2 * g_aDac.dSignalFreq / g_aDac.dSamplingRate;
 
     err = CalcSignalToBuf( pvBuf, nSamples,
-                            g_aDac[idxDac].signalType,
-                            g_aDac[idxDac].sampleSizeb,
-                            g_aDac[idxDac].chanMask,
-                            g_aDac[idxDac].chanMaxNum,
-                            twiddle,
-                            g_aDac[idxDac].aAmpl,
-                            g_aDac[idxDac].aPhaseKee
-                            );
+                           g_aDac.sampleSizeb,
+                           twiddle,
+                           g_aDac.aAmpl,
+                           &g_aDac.aPhaseKee
+                           );
 
     return err;
 }
@@ -266,62 +160,50 @@ S32 dac::CalcSignal( void *pvBuf, S32 nSamples, int idxDac, int cnt )
 
 S32 dac::FifoOutputCPUStart( S32 isCycle )
 {
-    int			ii, idx;
-
-    //
-    // Стартовать вывод в FIFO, начиная с последнего ЦАПа так, чтобы закончить МАСТЕРОМ
-    //
     U16 status = m_fpga->FpgaRegPeekDir(m_dacTrd.number, 0x0);
     fprintf(stderr, "0) STATUS = 0x%.4X\n", status);
 
+    U32 mode0 = m_fpga->FpgaRegPeekInd(m_dacTrd.number, 0x0);
 
+    if(isCycle) {
+        mode0 |= MODE0_RT;      // зацикливание FIFO ЦАП
+    } else {
+        mode0 &= ~MODE0_RT;
+    }
+    mode0 &= ~MODE0_START;      // запрет работы ЦАП
+    mode0 |= MODE0_RST_FIFO;    // сброс FIFO ЦАП
 
-    for( ii=g_nDacNum-1; ii>=0; ii-- )
-    {
-        idx = g_idx[ii];
+    m_fpga->FpgaRegPokeInd(m_dacTrd.number, 0x0, mode0);
 
-        U32 mode0 = m_fpga->FpgaRegPeekInd(m_dacTrd.number, 0x0);
+    IPC_delay(100);
 
-        if(isCycle) {
-            mode0 |= MODE0_RT;      // зацикливание FIFO ЦАП
-        } else {
-            mode0 &= ~MODE0_RT;
-        }
-        mode0 &= ~MODE0_START;      // запрет работы ЦАП
-        mode0 |= MODE0_RST_FIFO;    // сброс FIFO ЦАП
+    mode0 = m_fpga->FpgaRegPeekInd(m_dacTrd.number, 0x0);
+    mode0 &= ~MODE0_RST_FIFO;
+    m_fpga->FpgaRegPokeInd(m_dacTrd.number, 0x0, mode0);
 
-        m_fpga->FpgaRegPokeInd(m_dacTrd.number, 0x0, mode0);
+    IPC_delay(100);
 
-        IPC_delay(100);
-
-        mode0 = m_fpga->FpgaRegPeekInd(m_dacTrd.number, 0x0);
-        mode0 &= ~MODE0_RST_FIFO;
-        m_fpga->FpgaRegPokeInd(m_dacTrd.number, 0x0, mode0);
-
-        IPC_delay(100);
-
-        if(isCycle)
-          m_fpga->FpgaWriteRegBufDir(m_dacTrd.number, 0x1, g_aDac[idx].pBuf, g_aDac[idx].outBufSizeb);
-        else
-          m_fpga->FpgaWriteRegBufDir(m_dacTrd.number, 0x1, g_aDac[idx].pBuf, g_aDac[idx].outBufSizeb+8);
-/*
+    if(isCycle)
+        m_fpga->FpgaWriteRegBufDir(m_dacTrd.number, 0x1, g_aDac.pBuf, g_aDac.outBufSizeb);
+    else
+        m_fpga->FpgaWriteRegBufDir(m_dacTrd.number, 0x1, g_aDac.pBuf, g_aDac.outBufSizeb+8);
+    /*
         // Debug signal
         U16 testBuf[] = { 0x0, 0x5A7F, 0x7FFF, 0x5A7F, 0x0, 0xA583, 0x8000, 0xA583, };
         for(int i=0; i<1000; i++) {
             m_fpga->FpgaWriteRegBufDir(m_dacTrd.number, 0x1, testBuf, sizeof(testBuf));
         }
 */
-        // Add Autorestart bit in STMODE after fill FIFO
-        if(g_aDac[idx].nAutoRestart) {
-          U32 stmode = m_fpga->FpgaRegPeekInd(m_dacTrd.number, 0x5);
-          stmode |= (1 << 15);
-          m_fpga->FpgaRegPokeInd(m_dacTrd.number, 0x5, stmode);
-        }
-
-        mode0 = m_fpga->FpgaRegPeekInd(m_dacTrd.number, 0x0);
-        mode0 |= (MODE0_START | MODE0_MASTER);
-        m_fpga->FpgaRegPokeInd(m_dacTrd.number, 0x0, mode0); // разрешение работы ЦАП
+    // Add Autorestart bit in STMODE after fill FIFO
+    if(g_aDac.nAutoRestart) {
+        U32 stmode = m_fpga->FpgaRegPeekInd(m_dacTrd.number, 0x5);
+        stmode |= (1 << 15);
+        m_fpga->FpgaRegPokeInd(m_dacTrd.number, 0x5, stmode);
     }
+
+    mode0 = m_fpga->FpgaRegPeekInd(m_dacTrd.number, 0x0);
+    mode0 |= (MODE0_START | MODE0_MASTER);
+    m_fpga->FpgaRegPokeInd(m_dacTrd.number, 0x0, mode0); // разрешение работы ЦАП
 
     status = m_fpga->FpgaRegPeekDir(m_dacTrd.number, 0x0);
     fprintf(stderr, "1) STATUS = 0x%.4X\n", status);
@@ -333,68 +215,46 @@ S32 dac::FifoOutputCPUStart( S32 isCycle )
 
 S32 dac::WorkMode3()
 {
-    int				ii;
     volatile S32	tmp;
 
     fprintf(stderr, "\nWorkMode 3: -- Single FIFO -- \n\n");
 
-    for( ii=0; ii<g_nDacNum; ii++ )
+    //
+    // Скорректировать количество отсчетов на канал
+    //
+    g_aDac.outBufSizeb = g_nSamplesPerChannel
+            * g_aDac.sampleSizeb;
+    tmp = g_aDac.outBufSizeb / 16;
+    g_aDac.outBufSizeb = tmp * 16;
+    if( g_aDac.outBufSizeb > (S32)g_aDac.nFifoSizeb )
     {
-        //
-        // Скорректировать количество отсчетов на канал
-        //
-        g_aDac[ii].outBufSizeb = g_nSamplesPerChannel
-                               * g_aDac[ii].sampleSizeb
-                               * g_aDac[ii].chanNum;
-        tmp = g_aDac[ii].outBufSizeb / 16;
-        g_aDac[ii].outBufSizeb = tmp * 16;
-        if( g_aDac[ii].outBufSizeb > (S32)g_aDac[ii].nFifoSizeb )
-        {
-            g_aDac[ii].outBufSizeb = g_aDac[ii].nFifoSizeb;
-            fprintf(stderr, "WARNING: OutBufSizeb > DacFifoSizeb !\n");
-        }
-
-        g_aDac[ii].samplesPerChannel = g_aDac[ii].outBufSizeb
-                                        / g_aDac[ii].sampleSizeb
-                                        / g_aDac[ii].chanNum;
-
-        fprintf(stderr, "SamplesPerChannel = %d,  ", g_aDac[ii].samplesPerChannel );
-        fprintf(stderr, "SignalFreq = %.2f Hz\n", g_aDac[ii].dSignalFreq );
-
-        //
-        // Создать буфер для сигнала
-        //
-        g_aDac[ii].pBuf = malloc( g_aDac[ii].outBufSizeb + 8);
-        if( !g_aDac[ii].pBuf )
-        {
-            BRDC_printf( _BRDC("ERROR: No enougth memory, dacNo = %d"), ii );
-            return -1;
-        }
-
-        memset(g_aDac[ii].pBuf, 0, g_aDac[ii].outBufSizeb + 8);
-
-        CalcSignal( g_aDac[ii].pBuf, g_aDac[ii].samplesPerChannel, ii, 0 );
+        g_aDac.outBufSizeb = g_aDac.nFifoSizeb;
+        fprintf(stderr, "WARNING: OutBufSizeb > DacFifoSizeb !\n");
     }
+
+    g_aDac.samplesPerChannel = g_aDac.outBufSizeb / g_aDac.sampleSizeb;
+
+    fprintf(stderr, "SamplesPerChannel = %d,  ", g_aDac.samplesPerChannel );
+    fprintf(stderr, "SignalFreq = %.2f Hz\n", g_aDac.dSignalFreq );
+
+    //
+    // Создать буфер для сигнала
+    //
+    g_aDac.pBuf = malloc( g_aDac.outBufSizeb + 8);
+    if( !g_aDac.pBuf )
+    {
+        BRDC_printf( _BRDC("ERROR: No enougth memory!") );
+        return -1;
+    }
+
+    memset(g_aDac.pBuf, 0, g_aDac.outBufSizeb + 8);
+
+    CalcSignal( g_aDac.pBuf, g_aDac.samplesPerChannel );
 
     //
     // Выводить циклически данные в FIFO с помощью процессора
     //
-    fprintf(stderr, "Press any key to stop ...\n");
     FifoOutputCPUStart(0);
-    //IPC_getch();
-
-    //
-    // Остановит все ЦАПы и освободить все буфера
-    //
-    //for( ii=0; ii<g_nDacNum; ii++ )
-    //{
-    //    U32 mode0 = m_fpga->FpgaRegPeekInd(m_dacTrd.number, 0x0);
-    //    mode0 &= ~MODE0_START;      // запрет работы ЦАП
-    //    m_fpga->FpgaRegPokeInd(m_dacTrd.number, 0x0, mode0);
-    //    free( g_aDac[ii].pBuf );
-    //}
-
-    printf("\n");
 
     return 0;
 }
@@ -403,70 +263,44 @@ S32 dac::WorkMode3()
 
 S32 dac::WorkMode5()
 {
-    int				ii;
     volatile S32	tmp;
 
     fprintf(stderr, "\nWorkMode 5: -- Cycle FIFO -- \n\n");
 
-    for( ii=0; ii<g_nDacNum; ii++ )
+    g_aDac.outBufSizeb = g_nSamplesPerChannel
+            * g_aDac.sampleSizeb;
+    tmp = g_aDac.outBufSizeb / 16;
+    g_aDac.outBufSizeb = tmp * 16;
+    if( g_aDac.outBufSizeb > (S32)g_aDac.nFifoSizeb )
     {
-        //
-        //
-        //
-        g_aDac[ii].outBufSizeb = g_nSamplesPerChannel
-                               * g_aDac[ii].sampleSizeb
-                               * g_aDac[ii].chanNum;
-        tmp = g_aDac[ii].outBufSizeb / 16;
-        g_aDac[ii].outBufSizeb = tmp * 16;
-        if( g_aDac[ii].outBufSizeb > (S32)g_aDac[ii].nFifoSizeb )
-        {
-            g_aDac[ii].outBufSizeb = g_aDac[ii].nFifoSizeb;
-            fprintf(stderr, "WARNING: OutBufSizeb > DacFifoSizeb !\n");
-        }
-
-        g_aDac[ii].samplesPerChannel = g_aDac[ii].outBufSizeb
-                                     / g_aDac[ii].sampleSizeb
-                                     / g_aDac[ii].chanNum;
-        CorrectOutFreq( ii );
-
-        fprintf(stderr, "SamplesPerChannel = %d,  ", g_aDac[ii].samplesPerChannel );
-        fprintf(stderr, "SignalFreq = %.2f Hz\n", g_aDac[ii].dSignalFreq );
-
-        //
-        //
-        //
-        g_aDac[ii].pBuf = malloc( g_aDac[ii].outBufSizeb);
-        if( !g_aDac[ii].pBuf )
-        {
-            BRDC_printf( _BRDC("ERROR: No enougth memory, dacNo = %d"), ii );
-            return -1;
-        }
-
-        CalcSignal( g_aDac[ii].pBuf, g_aDac[ii].samplesPerChannel, ii, 0 );
+        g_aDac.outBufSizeb = g_aDac.nFifoSizeb;
+        fprintf(stderr, "WARNING: OutBufSizeb > DacFifoSizeb !\n");
     }
+
+    g_aDac.samplesPerChannel = g_aDac.outBufSizeb
+            / g_aDac.sampleSizeb;
+
+    CorrectOutFreq();
+
+    fprintf(stderr, "SamplesPerChannel = %d,  ", g_aDac.samplesPerChannel );
+    fprintf(stderr, "SignalFreq = %.2f Hz\n", g_aDac.dSignalFreq );
+
+    //
+    //
+    //
+    g_aDac.pBuf = malloc( g_aDac.outBufSizeb);
+    if( !g_aDac.pBuf )
+    {
+        BRDC_printf( _BRDC("ERROR: No enougth memory!") );
+        return -1;
+    }
+
+    CalcSignal( g_aDac.pBuf, g_aDac.samplesPerChannel );
 
     //
     //     FIFO
     //
     FifoOutputCPUStart(1);
-    //fprintf(stderr, "Press any key to stop ...\n");
-    //IPC_getch();
-
-    //
-    //
-    //
-    //U32 mode0 = m_fpga->FpgaRegPeekInd(m_dacTrd.number, 0x0);
-    //mode0 &= ~MODE0_START;
-    //m_fpga->FpgaRegPokeInd(m_dacTrd.number, 0x0, mode0);
-
-
-    //
-    //
-    //
-    //for( ii=0; ii<g_nDacNum; ii++ )
-    //    free( g_aDac[ii].pBuf );
-
-    //fprintf(stderr, "\n");
 
     return 0;
 }
@@ -561,16 +395,27 @@ bool dac::defaultDacSettings()
         attempt++;
     }
 
-    m_fpga->readSpdDev(m_dacTrd.number, 0x1, 0x21, 0, val);
+    //m_fpga->readSpdDev(m_dacTrd.number, 0x1, 0x21, 0, val);
     //fprintf(stderr, "DAC REG 0x21: 0x%.2X\n", val & 0xff);
-    m_fpga->readSpdDev(m_dacTrd.number, 0x1, 0x14, 0, val);
+    //m_fpga->readSpdDev(m_dacTrd.number, 0x1, 0x14, 0, val);
     //fprintf(stderr, "DAC REG 0x14: 0x%.2X\n", val & 0xff);
 
-//    m_fpga->writeSpdDev(m_dacTrd.number, 0x1, 0x06, 0x00);
-//    m_fpga->writeSpdDev(m_dacTrd.number, 0x1, 0x07, 0x02);
-//    m_fpga->writeSpdDev(m_dacTrd.number, 0x1, 0x08, 0x00);
+    //m_fpga->writeSpdDev(m_dacTrd.number, 0x1, 0x06, 0x00);
+    //m_fpga->writeSpdDev(m_dacTrd.number, 0x1, 0x07, 0x02);
+    //m_fpga->writeSpdDev(m_dacTrd.number, 0x1, 0x08, 0x00);
 
     return true;
+}
+
+//-----------------------------------------------------------------------------
+
+float dac::dacScale()
+{
+    float df = g_aDac.dSignalFreq/g_aDac.dSamplingRate;
+    float sinc0 = sin(M_PI*0.5)/(M_PI*0.5);
+    float sincx = ((1.0 - (sin(M_PI*df)/(M_PI*df)) + sinc0));
+    fprintf(stderr, "f: %.2f --- f/fs: %.2f --- SCALE: %.2f\n", g_aDac.dSignalFreq, df, sincx);
+    return sincx;
 }
 
 //-----------------------------------------------------------------------------

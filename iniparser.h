@@ -37,6 +37,7 @@ struct app_params_t {
     unsigned DacStopSource;
     unsigned DacStopInverting;
     unsigned DacRestart;
+    unsigned DacSincScale;
 
     unsigned dmaChannel;
     unsigned dmaBlockSize;
