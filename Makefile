@@ -41,6 +41,7 @@ LFLAGS += $(TARGET)
 $(TARGET_NAME): $(patsubst %.cpp,%.o, $(wildcard *.cpp))
 	$(LD) -o $(TARGET_NAME) $^ $(LIBPATH)/libgipcy.a $(NCURSES) $(LFLAGS)
 ifeq "$(findstring c6x, $(CC))" "c6x"
+	c6x-uclinux-strip $(TARGET_NAME)
 	cp $(TARGET_NAME) $(BINDIR_PREFIX)/home/$(TARGETFS_USER)/azbuka
 endif
 #	rm -f *.o *~ core
