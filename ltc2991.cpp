@@ -9,7 +9,7 @@
 
 //----------------------------------------------------------------------------------------------
 
-ltc2991::ltc2991(int bus, int i2c_addr) : m_i2c(bus), m_addr(i2c_addr)
+ltc2991::ltc2991(int bus, int i2c_addr) : m_i2c(bus), m_addr(i2c_addr), m_verbose(false)
 {
     m_i2c.i2c_write_byte_data(m_addr, LTC2991_CHANNEL_ENABLE_REG, 0x00);
     m_i2c.i2c_write_byte_data(m_addr, LTC2991_CONTROL_V1234_REG, 0x00);
@@ -101,7 +101,8 @@ float ltc2991::measure_vcc(int timeout)
 
     float Vcc = (2.5 + vcc * 305.18 * uV);
 
-    fprintf(stderr, "Vcc = %.2f V\n", Vcc);
+    if(m_verbose)
+        fprintf(stderr, "Vcc = %.2f V\n", Vcc);
 
     return Vcc;
 }
@@ -206,13 +207,13 @@ float ltc2991::measure_single(int input, int timeout)
 
     float V = (v * 305.18 * uV);
 
-    fprintf(stderr, "V[%d] = %.2f V\n", input, sign ? -V : V);
+    if(m_verbose)
+        fprintf(stderr, "V[%d] = %.2f V\n", input, sign ? -V : V);
 
     return V;
 }
 
 //----------------------------------------------------------------------------------------------
-
 
 float ltc2991::measure_own_t(int timeout)
 {
@@ -282,9 +283,129 @@ float ltc2991::measure_own_t(int timeout)
 
     float T = (vcc * 0.0625);
 
-    fprintf(stderr, "T = %.2f C\n", T);
+    if(m_verbose)
+        fprintf(stderr, "T = %.2f C\n", T);
 
     return T;
 }
 
 //----------------------------------------------------------------------------------------------
+
+float ltc2991::measure_differential_t(int input_pair, int timeout)
+{
+    // disable all channels
+    int res = m_i2c.i2c_write_byte_data(m_addr, LTC2991_CHANNEL_ENABLE_REG, 0x00);
+    if(res) {
+        fprintf(stderr, "%s(): Error in i2c_write_byte_data(0x%x, 0x%x)\n", __FUNCTION__, LTC2991_CHANNEL_ENABLE_REG, LTC2991_VCC_TINTERNAL_ENABLE);
+        return 0;
+    }
+
+    // enable V measure channel
+    uint8_t enable_mask = 0;
+    uint8_t ctrl_mask0 = 0;
+    uint8_t ctrl_mask1 = 0;
+    switch(input_pair) {
+    case 1:
+        enable_mask |= 0x10;
+        ctrl_mask0 |= 0x02;
+        break;
+    case 2:
+        enable_mask |= 0x20;
+        ctrl_mask0 |= 0x20;
+        break;
+    case 3:
+        enable_mask |= 0x40;
+        ctrl_mask1 |= 0x02;
+        break;
+    case 4:
+        enable_mask |= 0x80;
+        ctrl_mask1 |= 0x20;
+        break;
+    default: {
+        fprintf(stderr, "%s(): Invalid channels pair: 0x%X\n", __FUNCTION__, input_pair);
+        return 0;
+    }
+    }
+
+    res = m_i2c.i2c_write_byte_data(m_addr, LTC2991_CONTROL_V1234_REG, ctrl_mask0);
+    if(res) {
+        fprintf(stderr, "%s(): Error in i2c_write_byte_data(0x%x, 0x%x)\n", __FUNCTION__, LTC2991_CONTROL_V1234_REG, ctrl_mask0);
+        return 0;
+    }
+
+    res = m_i2c.i2c_write_byte_data(m_addr, LTC2991_CONTROL_V5678_REG, ctrl_mask1);
+    if(res) {
+        fprintf(stderr, "%s(): Error in i2c_write_byte_data(0x%x, 0x%x)\n", __FUNCTION__, LTC2991_CONTROL_V5678_REG, ctrl_mask1);
+        return 0;
+    }
+
+    res = m_i2c.i2c_write_byte_data(m_addr, LTC2991_CONTROL_PWM_Tinternal_REG, 0);
+    if(res) {
+        fprintf(stderr, "%s(): Error in i2c_write_byte_data(0x%x, 0x%x)\n", __FUNCTION__, LTC2991_CONTROL_PWM_Tinternal_REG, 0);
+        return 0;
+    }
+
+    res = m_i2c.i2c_write_byte_data(m_addr, LTC2991_CHANNEL_ENABLE_REG, enable_mask);
+    if(res) {
+        fprintf(stderr, "%s(): Error in i2c_write_byte_data(0x%x, 0x%x)\n", __FUNCTION__, LTC2991_CHANNEL_ENABLE_REG, enable_mask);
+        return 0;
+    }
+
+    // wait until new measure will be triggered
+    IPC_delay(50);
+
+    uint8_t l_status = 0;
+
+    // wait status bit
+    while(1) {
+
+        res = m_i2c.i2c_read_byte_data(m_addr, LTC2991_STATUS_LOW_REG, &l_status);
+        if(res) {
+            fprintf(stderr, "%s(): Error in i2c_read_byte_data(0x%x)\n", __FUNCTION__, LTC2991_CHANNEL_ENABLE_REG);
+            return 0;
+        }
+
+        if((l_status & ctrl_mask0) || (l_status & ctrl_mask1)) {
+            break;
+        }
+
+        --timeout;
+
+        if(timeout <= 0) {
+            fprintf(stderr, "%s(): Vcc measuring timeout!\n", __FUNCTION__);
+            return 0;
+        }
+
+        IPC_delay(1);
+    }
+
+    // read measured data
+    uint16_t Vx = 0;
+
+    uint8_t msb = 0;
+    uint8_t lsb = 0;
+
+    res |= m_i2c.i2c_read_byte_data(m_addr, LTC2991_V1_MSB_REG + 4*(input_pair-1), &msb);
+    res |= m_i2c.i2c_read_byte_data(m_addr, LTC2991_V1_LSB_REG + 4*(input_pair-1), &lsb);
+    if(res) {
+        fprintf(stderr, "%s(): Error read Vx LSB or MSB value!\n", __FUNCTION__);
+        return 0;
+    }
+
+    // Data valid bit
+    if(!(msb & 0x80)) {
+        fprintf(stderr, "%s(): Error - Data Valid bit not set in MSB1!\n", __FUNCTION__);
+        return 0;
+    }
+
+    msb &= ~0xE0;
+
+    Vx = ((msb << 8) | lsb);
+
+    float Tx = Vx / 16;
+
+    if(m_verbose)
+        fprintf(stderr, "T[%d-%d] = %.2f C\n", 2*(input_pair-1)+1, 2*(input_pair-1)+2, Tx);
+
+    return Tx;
+}

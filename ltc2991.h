@@ -233,10 +233,14 @@ public:
     float measure_vcc(int timeout = 500);
     float measure_single(int input, int timeout = 500);
     float measure_own_t(int timeout = 500);
+    float measure_differential_t(int input_pair, int timeout = 500);
+    void  measure_print_enable(bool enable = false) { m_verbose = enable; }
 
 private:
+    ltc2991();
     i2c m_i2c;
     int m_addr;
+    bool m_verbose;
 };
 
 //----------------------------------------------------------------------------------------------
