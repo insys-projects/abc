@@ -91,15 +91,9 @@ float ltc2991::measure_vcc(int timeout)
         return 0;
     }
 
-    // SIGN bit
-    //int sign = (msb & 0x40);
-
-    msb &= ~0x80;
-    msb &= ~0x40;
-
     vcc = ((msb << 8) | lsb);
 
-    float Vcc = (2.5 + vcc * 305.18 * uV);
+    float Vcc = code_to_vcc_voltage(vcc);
 
     if(m_verbose)
         fprintf(stderr, "Vcc = %.2f V\n", Vcc);
@@ -197,18 +191,12 @@ float ltc2991::measure_single(int input, int timeout)
         return 0;
     }
 
-    // SIGN bit
-    int sign = (msb & 0x40);
-
-    msb &= ~0x80;
-    msb &= ~0x40;
-
     v = ((msb << 8) | lsb);
 
-    float V = (v * 305.18 * uV);
+    float V = code_to_single_ended_voltage(v);
 
     if(m_verbose)
-        fprintf(stderr, "V[%d] = %.2f V\n", input, sign ? -V : V);
+        fprintf(stderr, "V[%d] = %.2f V\n", input, V);
 
     return V;
 }
@@ -277,11 +265,9 @@ float ltc2991::measure_own_t(int timeout)
         return 0;
     }
 
-    msb &= ~(0x80 | 0x40 | 0x20);
-
     vcc = ((msb << 8) | lsb);
 
-    float T = (vcc * 0.0625);
+    float T = code_to_temperature(vcc);
 
     if(m_verbose)
         fprintf(stderr, "T = %.2f C\n", T);
@@ -380,8 +366,6 @@ float ltc2991::measure_differential_t(int input_pair, int timeout)
     }
 
     // read measured data
-    uint16_t Vx = 0;
-
     uint8_t msb = 0;
     uint8_t lsb = 0;
 
@@ -398,14 +382,81 @@ float ltc2991::measure_differential_t(int input_pair, int timeout)
         return 0;
     }
 
-    msb &= ~0xE0;
-
-    Vx = ((msb << 8) | lsb);
-
-    float Tx = Vx / 16;
+    uint16_t Vx = ((msb << 8) | lsb);
+    float Tx = code_to_temperature(Vx);
 
     if(m_verbose)
         fprintf(stderr, "T[%d-%d] = %.2f C\n", 2*(input_pair-1)+1, 2*(input_pair-1)+2, Tx);
 
     return Tx;
 }
+
+//----------------------------------------------------------------------------------------------
+
+float ltc2991::code_to_single_ended_voltage(int16_t adc_code)
+{
+  float voltage;
+  int16_t sign = 1;
+  if (adc_code >> 14) {
+    adc_code = (adc_code ^ 0x7FFF) + 1;        //! 1) Converts two's complement to binary
+    sign = -1;
+  }
+  adc_code = (adc_code & 0x3FFF);
+  voltage = ((float) adc_code) * (3.05176E-04) * sign; //! 2) Convert code to voltage from lsb
+  return (voltage);
+}
+
+//----------------------------------------------------------------------------------------------
+
+float ltc2991::code_to_vcc_voltage(int16_t adc_code)
+{
+  float voltage;
+  int16_t sign = 1;
+  if (adc_code >> 14) {
+    adc_code = (adc_code ^ 0x7FFF) + 1;        //! 1) Converts two's complement to binary
+    sign = -1;
+  }
+  voltage = (((float) adc_code) * (3.05176E-04) * sign) + 2.5; //! 2) Convert code to Vcc Voltage from single-ended lsb
+  return (voltage);
+}
+
+//----------------------------------------------------------------------------------------------
+
+float ltc2991::code_to_differential_voltage(int16_t adc_code)
+{
+  float voltage;
+  int16_t sign = 1;
+  if (adc_code >> 14) {
+    adc_code = (adc_code ^ 0x7FFF) + 1;                  //! 1)Converts two's complement to binary
+    sign = -1;
+  }
+  voltage = ((float) adc_code) * (1.90735E-05) * sign;   //! 2) Convert code to voltage form differential lsb
+  return (voltage);
+}
+
+//----------------------------------------------------------------------------------------------
+
+float ltc2991::code_to_temperature(int16_t adc_code, bool unit)
+{
+  float temperature;
+  adc_code = (adc_code & 0x1FFF);                //! 1) Removes first 3 bits
+  if(!unit) {                                    //! 2)Checks to see if it's Kelvin
+    if(adc_code >>12) {
+        adc_code = (adc_code | 0xE000);          //! Sign extend if it's not Kelvin (Celsius)
+    }
+  }
+  temperature = ((float) adc_code) * (0.0625);   //! 3) Converts code to temperature from temperature lsb
+  return (temperature);
+}
+
+//----------------------------------------------------------------------------------------------
+
+float ltc2991::code_to_diode_voltage(int16_t adc_code)
+{
+  float voltage;
+  adc_code &= 0x1FFF;                             //! 1) Removes first 3 bits
+  voltage = ((float) adc_code) * (3.815E-05);     //! 2) Convert code to voltage from diode voltage lsb
+  return (voltage);
+}
+
+//----------------------------------------------------------------------------------------------
