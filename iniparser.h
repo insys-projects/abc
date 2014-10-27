@@ -43,6 +43,21 @@ struct app_params_t {
     unsigned dmaBlockSize;
     unsigned dmaBlockCount;
     unsigned dmaBuffersCount;
+
+    unsigned extStartSync;
+    unsigned syncCycle;
+    unsigned Tcycle;
+    unsigned Tdelay;
+    unsigned deltaAdc;
+    unsigned deltaDac;
+    unsigned deltaA;
+    unsigned widthA;
+    unsigned deltaB;
+    unsigned widthB;
+    unsigned deltaC;
+    unsigned widthC;
+    unsigned deltaD;
+    unsigned widthD;
 };
 
 bool getParams(int argc, char *argv[], struct app_params_t& param);
