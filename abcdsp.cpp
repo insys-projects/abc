@@ -62,6 +62,7 @@ abcdsp::abcdsp(const struct app_params_t& params) : m_dac(0), m_adc(0), m_params
 
     m_adc = new adc(m_fpga, params);
     m_dac = new dac(m_fpga, params);
+    m_sync = new abc_sync(m_fpga, params);
     m_mem = m_fpga->ddr3();
 
     m_ltc1 = new ltc2991(0x1, 0x48);
@@ -78,6 +79,7 @@ abcdsp::~abcdsp()
     delete m_ltc1;
     delete m_dac;
     delete m_adc;
+    delete m_sync;
     delete m_fpga;
 }
 
@@ -1024,3 +1026,25 @@ bool abcdsp::ltcTest()
 }
 
 //-----------------------------------------------------------------------------
+
+bool abcdsp::syncTest()
+{
+    //fprintf(stderr, "Press enter to start SYNC\n");
+    //getchar();
+    //for(int i=0; i<10; i++) {
+
+        //m_sync->start();
+        //fprintf(stderr, "Press enter to reconfigure and restart SYNC or Ctrl+C and than Enter to exit.\n");
+        fprintf(stderr, "Press enter to start SYNC\n");
+        getchar();
+	m_sync->start();
+        //m_sync->reconfig("azbuka_325.ini");
+        //if(exitFlag()) {
+        //    break;
+        //}
+        fprintf(stderr, "Press enter to stop SYNC\n");
+        getchar();
+        m_sync->stop();
+    //}
+    return true;
+}

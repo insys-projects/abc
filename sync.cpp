@@ -15,22 +15,22 @@
 
 //-------------------------------------------------------------------------------------
 
-sync::sync(Fpga *fpga, const app_params_t& params) : m_fpga(fpga), m_param(params)
+abc_sync::abc_sync(Fpga *fpga, const app_params_t& params) : m_fpga(fpga), m_param(params)
 {
     // Search SYNC TRD
-    if(!m_fpga->fpgaTrd(0, 0xC1, m_syncTrd)) {
-        fprintf(stderr, "%s(): SYNC TRD 0x%.2X not found!\n", __FUNCTION__, 0xB9);
+    if(!m_fpga->fpgaTrd(0, 0xC2, m_syncTrd)) {
+        fprintf(stderr, "%s(): SYNC TRD 0x%.2X not found!\n", __FUNCTION__, 0xC2);
         return;
     }
 
-    // STMODE
-    U32 stmode = 0;
-    m_fpga->FpgaRegPokeInd(m_syncTrd.number, 0x5, stmode);
+    reset_fifo();
+
+    set_param(params);
 }
 
 //-------------------------------------------------------------------------------------
 
-sync::~sync()
+abc_sync::~abc_sync()
 {
     U32 mode0 = m_fpga->FpgaRegPeekInd(m_syncTrd.number, 0x0);
     mode0 &= ~MODE0_START;      // запрет работы
@@ -40,21 +40,28 @@ sync::~sync()
 
 //-------------------------------------------------------------------------------------
 
-void sync::start()
+void abc_sync::start()
 {
+    set_param(m_param);
+
+    // STMODE
+    m_fpga->FpgaRegPokeInd(m_syncTrd.number, 0x5, 0x0);
+
+    // MODE0
     m_fpga->FpgaRegPokeInd(m_syncTrd.number, 0x0, 0x2038);
 }
 
 //-------------------------------------------------------------------------------------
 
-void sync::stop()
+void abc_sync::stop()
 {
     m_fpga->FpgaRegPokeInd(m_syncTrd.number, 0x0, 0x0);
+    m_fpga->FpgaRegPokeInd(m_syncTrd.number, 0x5, 0x0);
 }
 
 //-------------------------------------------------------------------------------------
 
-void sync::reset_fifo()
+void abc_sync::reset_fifo()
 {
     U32 mode0 = m_fpga->FpgaRegPeekInd(m_syncTrd.number, 0x0);
 
@@ -67,88 +74,181 @@ void sync::reset_fifo()
 
 //-------------------------------------------------------------------------------------
 
-u16 sync::status()
+u16 abc_sync::status()
 {
     return (m_fpga->FpgaRegPeekDir(m_syncTrd.number, 0x0) & 0xFFFF);
 }
 
 //-------------------------------------------------------------------------------------
 
-bool sync::set_param(const struct app_params_t& params)
+bool abc_sync::set_param(const struct app_params_t& params)
 {
     if(!check_param(params)) {
-      return false;
+        fprintf(stderr, "%s(): Invalid parameters!\n", __FUNCTION__);
+        return false;
     }
 
     stop();
 
     m_fpga->FpgaRegPokeInd(m_syncTrd.number, SYNC_PERIOD, params.Tcycle & 0xffff);
     m_fpga->FpgaRegPokeInd(m_syncTrd.number, SYNC_PERIOD+1, (params.Tcycle >> 16) & 0xffff);
-
     m_fpga->FpgaRegPokeInd(m_syncTrd.number, SYNC_DELAY, params.Tdelay & 0xffff);
-    m_fpga->FpgaRegPokeInd(m_syncTrd.number, SYNC_ADC_DELAY, params.deltaAdc & 0xffff);
-    m_fpga->FpgaRegPokeInd(m_syncTrd.number, SYNC_DAC_DELAY, params.deltaDac & 0xffff);
-    m_fpga->FpgaRegPokeInd(m_syncTrd.number, SYNC_A_DELAY, params.deltaA & 0xffff);
-    m_fpga->FpgaRegPokeInd(m_syncTrd.number, SYNC_A_WIDTH, params.widthA & 0xffff);
-    m_fpga->FpgaRegPokeInd(m_syncTrd.number, SYNC_DELAY, params.deltaB & 0xffff);
-    m_fpga->FpgaRegPokeInd(m_syncTrd.number, SYNC_DELAY, params.widthB & 0xffff);
-    m_fpga->FpgaRegPokeInd(m_syncTrd.number, SYNC_DELAY, params.deltaC & 0xffff);
-    m_fpga->FpgaRegPokeInd(m_syncTrd.number, SYNC_DELAY, params.widthC & 0xffff);
-    m_fpga->FpgaRegPokeInd(m_syncTrd.number, SYNC_DELAY, params.deltaD & 0xffff);
-    m_fpga->FpgaRegPokeInd(m_syncTrd.number, SYNC_DELAY, params.widthD & 0xffff);
+    m_fpga->FpgaRegPokeInd(m_syncTrd.number, SYNC_ADC_DELTA, params.deltaAdc & 0xffff);
+    m_fpga->FpgaRegPokeInd(m_syncTrd.number, SYNC_DAC_DELTA, params.deltaDac & 0xffff);
+    m_fpga->FpgaRegPokeInd(m_syncTrd.number, SYNC_A_DELTA, params.delta_A & 0xffff);
+    m_fpga->FpgaRegPokeInd(m_syncTrd.number, SYNC_A_WIDTH, params.width_A & 0xffff);
+    m_fpga->FpgaRegPokeInd(m_syncTrd.number, SYNC_B_DELTA, params.delta_B & 0xffff);
+    m_fpga->FpgaRegPokeInd(m_syncTrd.number, SYNC_B_WIDTH, params.width_B & 0xffff);
+    m_fpga->FpgaRegPokeInd(m_syncTrd.number, SYNC_C_DELTA, params.delta_C & 0xffff);
+    m_fpga->FpgaRegPokeInd(m_syncTrd.number, SYNC_C_WIDTH, params.width_C & 0xffff);
+    m_fpga->FpgaRegPokeInd(m_syncTrd.number, SYNC_D_DELTA, params.delta_D & 0xffff);
+    m_fpga->FpgaRegPokeInd(m_syncTrd.number, SYNC_D_WIDTH, params.width_D & 0xffff);
 
     if(params.syncCycle)
-      m_fpga->FpgaRegPokeInd(m_syncTrd.number, 0x9, 0x1);
+        m_fpga->FpgaRegPokeInd(m_syncTrd.number, 0x9, 0x1);
     else
-      m_fpga->FpgaRegPokeInd(m_syncTrd.number, 0x9, 0x0);
+        m_fpga->FpgaRegPokeInd(m_syncTrd.number, 0x9, 0x0);
 
     // STMODE
-    U32 stmode = (params.DacStopInverting << 14) |
-            (params.DacStopSource << 8) |
-            (params.DacStartMode << 7) |
-            (params.DacStartBaseInverting << 6) | params.DacStartBaseSource;
-    m_fpga->FpgaRegPokeInd(m_syncTrd.number, 0x5, stmode);
+    //U32 stmode = (params.DacStopInverting << 14) |
+    //        (params.DacStopSource << 8) |
+    //        (params.DacStartMode << 7) |
+    //        (params.DacStartBaseInverting << 6) | params.DacStartBaseSource;
+    //m_fpga->FpgaRegPokeInd(m_syncTrd.number, 0x5, 0x0);
 
-    start();
+    //start();
 
     return true;
 }
 
 //-------------------------------------------------------------------------------------
 
-bool sync::check_param(const struct app_params_t& params)
+bool abc_sync::check_param(const struct app_params_t& params)
 {
     if(params.Tcycle < params.Tdelay + params.deltaAdc) {
-      fprintf(stderr, "%s(): Error: parameters Tdelay and deltaAdc out of range!\n", __FUNCTION__);
-      return false;
+        fprintf(stderr, "%s(): Error: parameters Tdelay and deltaAdc out of range!\n", __FUNCTION__);
+        return false;
     }
 
     if(params.Tcycle < params.Tdelay + params.deltaDac) {
-      fprintf(stderr, "%s(): Error: parameters Tdelay and deltaDac out of range!\n", __FUNCTION__);
-      return false;
+        fprintf(stderr, "%s(): Error: parameters Tdelay and deltaDac out of range!\n", __FUNCTION__);
+        return false;
     }
 
-    if(params.Tcycle < params.Tdelay + params.deltaA + params.widthA) {
-      fprintf(stderr, "%s(): Error: parameters Tdelay, deltaA and widthA out of range!\n", __FUNCTION__);
-      return false;
+    if(params.Tcycle < params.Tdelay + params.delta_A + params.width_A) {
+        fprintf(stderr, "%s(): Error: parameters Tdelay, delta_A and width_A out of range!\n", __FUNCTION__);
+        return false;
     }
 
-    if(params.Tcycle < params.Tdelay + params.deltaB + params.widthB) {
-      fprintf(stderr, "%s(): Error: parameters Tdelay, deltaB and widthB out of range!\n", __FUNCTION__);
-      return false;
+    if(params.Tcycle < params.Tdelay + params.delta_B + params.width_B) {
+        fprintf(stderr, "%s(): Error: parameters Tdelay, delta_B and width_B out of range!\n", __FUNCTION__);
+        return false;
     }
 
-    if(params.Tcycle < params.Tdelay + params.deltaC + params.widthC) {
-      fprintf(stderr, "%s(): Error: parameters Tdelay, deltaC and widthC out of range!\n", __FUNCTION__);
-      return false;
+    if(params.Tcycle < params.Tdelay + params.delta_C + params.width_C) {
+        fprintf(stderr, "%s(): Error: parameters Tdelay, delta_C and width_C out of range!\n", __FUNCTION__);
+        return false;
     }
 
-    if(params.Tcycle < params.Tdelay + params.deltaD + params.widthD) {
-      fprintf(stderr, "%s(): Error: parameters Tdelay, deltaD and widthD out of range!\n", __FUNCTION__);
-      return false;
+    if(params.Tcycle < params.Tdelay + params.delta_D + params.width_D) {
+        fprintf(stderr, "%s(): Error: parameters Tdelay, delta_D and width_D out of range!\n", __FUNCTION__);
+        return false;
     }
 
     return true;
 }
 
 //-------------------------------------------------------------------------------------
+
+void abc_sync::reconfig(const IPC_str *iniFile)
+{
+    IPC_str Buffer[128];
+    IPC_str iniFilePath[1024];
+
+    const IPC_str *iniFileName = iniFile;
+    IPC_getCurrentDir(iniFilePath, sizeof(iniFilePath)/sizeof(char));
+    BRDC_strcat(iniFilePath, _BRDC("/"));
+    BRDC_strcat(iniFilePath, iniFileName);
+
+    fprintf(stderr, "inifile = %s\n", iniFilePath);
+
+    int res = IPC_getPrivateProfileString(SECTION_NAME, _BRDC("syncCycle"), _BRDC("0"), Buffer, sizeof(Buffer), iniFilePath);
+    if(!res) {
+        fprintf(stderr, "Parameter: syncCycle - not found. Use default value\n");
+    }
+    m_param.syncCycle = BRDC_strtol(Buffer,0,10);
+
+    res = IPC_getPrivateProfileString(SECTION_NAME, _BRDC("Tcycle"), _BRDC("0"), Buffer, sizeof(Buffer), iniFilePath);
+    if(!res) {
+        fprintf(stderr, "Parameter: Tcycle - not found. Use default value\n");
+    }
+    m_param.Tcycle = BRDC_strtol(Buffer,0,10);
+
+    res = IPC_getPrivateProfileString(SECTION_NAME, _BRDC("Tdelay"), _BRDC("0"), Buffer, sizeof(Buffer), iniFilePath);
+    if(!res) {
+        fprintf(stderr, "Parameter: Tdelay - not found. Use default value\n");
+    }
+    m_param.Tdelay = BRDC_strtol(Buffer,0,10);
+
+    res = IPC_getPrivateProfileString(SECTION_NAME, _BRDC("deltaAdc"), _BRDC("0"), Buffer, sizeof(Buffer), iniFilePath);
+    if(!res) {
+        fprintf(stderr, "Parameter: deltaAdc - not found. Use default value\n");
+    }
+    m_param.deltaAdc = BRDC_strtol(Buffer,0,10);
+
+    res = IPC_getPrivateProfileString(SECTION_NAME, _BRDC("deltaDac"), _BRDC("0"), Buffer, sizeof(Buffer), iniFilePath);
+    if(!res) {
+        fprintf(stderr, "Parameter: deltaDac - not found. Use default value\n");
+    }
+    m_param.deltaDac = BRDC_strtol(Buffer,0,10);
+
+    res = IPC_getPrivateProfileString(SECTION_NAME, _BRDC("delta_A"), _BRDC("0"), Buffer, sizeof(Buffer), iniFilePath);
+    if(!res) {
+        fprintf(stderr, "Parameter: delta_A - not found. Use default value\n");
+    }
+    m_param.delta_A = BRDC_strtol(Buffer,0,10);
+
+    res = IPC_getPrivateProfileString(SECTION_NAME, _BRDC("width_A"), _BRDC("0"), Buffer, sizeof(Buffer), iniFilePath);
+    if(!res) {
+        fprintf(stderr, "Parameter: width_A - not found. Use default value\n");
+    }
+    m_param.width_A = BRDC_strtol(Buffer,0,10);
+
+    res = IPC_getPrivateProfileString(SECTION_NAME, _BRDC("delta_B"), _BRDC("0"), Buffer, sizeof(Buffer), iniFilePath);
+    if(!res) {
+        fprintf(stderr, "Parameter: delta_B - not found. Use default value\n");
+    }
+    m_param.delta_B = BRDC_strtol(Buffer,0,10);
+
+    res = IPC_getPrivateProfileString(SECTION_NAME, _BRDC("width_B"), _BRDC("0"), Buffer, sizeof(Buffer), iniFilePath);
+    if(!res) {
+        fprintf(stderr, "Parameter: width_B - not found. Use default value\n");
+    }
+    m_param.width_B = BRDC_strtol(Buffer,0,10);
+
+    res = IPC_getPrivateProfileString(SECTION_NAME, _BRDC("delta_C"), _BRDC("0"), Buffer, sizeof(Buffer), iniFilePath);
+    if(!res) {
+        fprintf(stderr, "Parameter: delta_C - not found. Use default value\n");
+    }
+    m_param.delta_C = BRDC_strtol(Buffer,0,10);
+
+    res = IPC_getPrivateProfileString(SECTION_NAME, _BRDC("width_C"), _BRDC("0"), Buffer, sizeof(Buffer), iniFilePath);
+    if(!res) {
+        fprintf(stderr, "Parameter: width_C - not found. Use default value\n");
+    }
+    m_param.width_C = BRDC_strtol(Buffer,0,10);
+
+    res = IPC_getPrivateProfileString(SECTION_NAME, _BRDC("delta_D"), _BRDC("0"), Buffer, sizeof(Buffer), iniFilePath);
+    if(!res) {
+        fprintf(stderr, "Parameter: delta_D - not found. Use default value\n");
+    }
+    m_param.delta_D = BRDC_strtol(Buffer,0,10);
+
+    res = IPC_getPrivateProfileString(SECTION_NAME, _BRDC("width_D"), _BRDC("0"), Buffer, sizeof(Buffer), iniFilePath);
+    if(!res) {
+        fprintf(stderr, "Parameter: width_D - not found. Use default value\n");
+    }
+    m_param.width_D = BRDC_strtol(Buffer,0,10);
+
+    //================================================
+}

@@ -87,6 +87,9 @@ int main(int argc, char *argv[])
         case 2: {
             brd.uartTest(UART_RATE_115200, false);
         } break;
+        case 3: {
+            brd.syncTest();
+        } break;
         }
 
     }

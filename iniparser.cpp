@@ -235,12 +235,6 @@ bool getParams(int argc, char *argv[], struct app_params_t& param)
 
     //================================================
 
-    res = IPC_getPrivateProfileString(SECTION_NAME, _BRDC("extStartSync"), _BRDC("0"), Buffer, sizeof(Buffer), iniFilePath);
-    if(!res) {
-        fprintf(stderr, "Parameter: extStartSync - not found. Use default value\n");
-    }
-    param.extStartSync = BRDC_strtol(Buffer,0,10);
-
     res = IPC_getPrivateProfileString(SECTION_NAME, _BRDC("syncCycle"), _BRDC("0"), Buffer, sizeof(Buffer), iniFilePath);
     if(!res) {
         fprintf(stderr, "Parameter: syncCycle - not found. Use default value\n");
@@ -271,53 +265,53 @@ bool getParams(int argc, char *argv[], struct app_params_t& param)
     }
     param.deltaDac = BRDC_strtol(Buffer,0,10);
 
-    res = IPC_getPrivateProfileString(SECTION_NAME, _BRDC("deltaA"), _BRDC("0"), Buffer, sizeof(Buffer), iniFilePath);
+    res = IPC_getPrivateProfileString(SECTION_NAME, _BRDC("delta_A"), _BRDC("0"), Buffer, sizeof(Buffer), iniFilePath);
     if(!res) {
         fprintf(stderr, "Parameter: deltaA - not found. Use default value\n");
     }
-    param.deltaA = BRDC_strtol(Buffer,0,10);
+    param.delta_A = BRDC_strtol(Buffer,0,10);
 
-    res = IPC_getPrivateProfileString(SECTION_NAME, _BRDC("widthA"), _BRDC("0"), Buffer, sizeof(Buffer), iniFilePath);
+    res = IPC_getPrivateProfileString(SECTION_NAME, _BRDC("width_A"), _BRDC("0"), Buffer, sizeof(Buffer), iniFilePath);
     if(!res) {
         fprintf(stderr, "Parameter: widthA - not found. Use default value\n");
     }
-    param.widthA = BRDC_strtol(Buffer,0,10);
+    param.width_A = BRDC_strtol(Buffer,0,10);
 
-    res = IPC_getPrivateProfileString(SECTION_NAME, _BRDC("deltaB"), _BRDC("0"), Buffer, sizeof(Buffer), iniFilePath);
+    res = IPC_getPrivateProfileString(SECTION_NAME, _BRDC("delta_B"), _BRDC("0"), Buffer, sizeof(Buffer), iniFilePath);
     if(!res) {
         fprintf(stderr, "Parameter: deltaB - not found. Use default value\n");
     }
-    param.deltaB = BRDC_strtol(Buffer,0,10);
+    param.delta_B = BRDC_strtol(Buffer,0,10);
 
-    res = IPC_getPrivateProfileString(SECTION_NAME, _BRDC("widthB"), _BRDC("0"), Buffer, sizeof(Buffer), iniFilePath);
+    res = IPC_getPrivateProfileString(SECTION_NAME, _BRDC("width_B"), _BRDC("0"), Buffer, sizeof(Buffer), iniFilePath);
     if(!res) {
         fprintf(stderr, "Parameter: widthB - not found. Use default value\n");
     }
-    param.widthB = BRDC_strtol(Buffer,0,10);
+    param.width_B = BRDC_strtol(Buffer,0,10);
 
-    res = IPC_getPrivateProfileString(SECTION_NAME, _BRDC("deltaC"), _BRDC("0"), Buffer, sizeof(Buffer), iniFilePath);
+    res = IPC_getPrivateProfileString(SECTION_NAME, _BRDC("delta_C"), _BRDC("0"), Buffer, sizeof(Buffer), iniFilePath);
     if(!res) {
         fprintf(stderr, "Parameter: deltaC - not found. Use default value\n");
     }
-    param.deltaC = BRDC_strtol(Buffer,0,10);
+    param.delta_C = BRDC_strtol(Buffer,0,10);
 
-    res = IPC_getPrivateProfileString(SECTION_NAME, _BRDC("widthC"), _BRDC("0"), Buffer, sizeof(Buffer), iniFilePath);
+    res = IPC_getPrivateProfileString(SECTION_NAME, _BRDC("width_C"), _BRDC("0"), Buffer, sizeof(Buffer), iniFilePath);
     if(!res) {
         fprintf(stderr, "Parameter: widthC - not found. Use default value\n");
     }
-    param.widthC = BRDC_strtol(Buffer,0,10);
+    param.width_C = BRDC_strtol(Buffer,0,10);
 
-    res = IPC_getPrivateProfileString(SECTION_NAME, _BRDC("deltaD"), _BRDC("0"), Buffer, sizeof(Buffer), iniFilePath);
+    res = IPC_getPrivateProfileString(SECTION_NAME, _BRDC("delta_D"), _BRDC("0"), Buffer, sizeof(Buffer), iniFilePath);
     if(!res) {
         fprintf(stderr, "Parameter: deltaD - not found. Use default value\n");
     }
-    param.deltaD = BRDC_strtol(Buffer,0,10);
+    param.delta_D = BRDC_strtol(Buffer,0,10);
 
-    res = IPC_getPrivateProfileString(SECTION_NAME, _BRDC("widthD"), _BRDC("0"), Buffer, sizeof(Buffer), iniFilePath);
+    res = IPC_getPrivateProfileString(SECTION_NAME, _BRDC("width_D"), _BRDC("0"), Buffer, sizeof(Buffer), iniFilePath);
     if(!res) {
         fprintf(stderr, "Parameter: widthD - not found. Use default value\n");
     }
-    param.widthD = BRDC_strtol(Buffer,0,10);
+    param.width_D = BRDC_strtol(Buffer,0,10);
 
     //================================================
 
@@ -363,6 +357,19 @@ void showParams(struct app_params_t& param)
     fprintf(stderr, "dmaBlockCount:             0x%x\n", param.dmaBlockCount);
     fprintf(stderr, "dmaBuffersCount:           0x%x\n", param.dmaBuffersCount);
     fprintf(stderr, " \n");
+    fprintf(stderr, "syncCycle:                 0x%x\n", param.syncCycle);
+    fprintf(stderr, "Tcycle:                    0x%x\n", param.Tcycle);
+    fprintf(stderr, "Tdelay:                    0x%x\n", param.Tdelay);
+    fprintf(stderr, "deltaAdc:                  0x%x\n", param.deltaAdc);
+    fprintf(stderr, "deltaDac:                  0x%x\n", param.deltaDac);
+    fprintf(stderr, "delta_A:                    0x%x\n", param.delta_A);
+    fprintf(stderr, "width_A:                    0x%x\n", param.width_A);
+    fprintf(stderr, "delta_B:                    0x%x\n", param.delta_B);
+    fprintf(stderr, "width_B:                    0x%x\n", param.width_B);
+    fprintf(stderr, "delta_C:                    0x%x\n", param.delta_C);
+    fprintf(stderr, "width_C:                    0x%x\n", param.width_C);
+    fprintf(stderr, "delta_D:                    0x%x\n", param.delta_D);
+    fprintf(stderr, "width_D:                    0x%x\n", param.width_D);
 }
 
 //-----------------------------------------------------------------------------

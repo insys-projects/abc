@@ -13,6 +13,7 @@
 #include "i2c.h"
 #include "ltc2991.h"
 #include "iniparser.h"
+#include "sync.h"
 
 #include <vector>
 #include <string>
@@ -107,6 +108,7 @@ public:
     bool serialRead(std::string& data, int timeout = 10);
     bool uartTest(U8 speed, bool loopback);
     bool ltcTest();
+    bool syncTest();
 
     U8 fpgaSerialRead();
 
@@ -120,6 +122,7 @@ private:
     bool                     m_exit;
     dac*                     m_dac;
     adc*                     m_adc;
+    abc_sync*                m_sync;
     Memory*                  m_mem;
     ltc2991*                 m_ltc1;
     ltc2991*                 m_ltc2;
