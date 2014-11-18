@@ -75,6 +75,9 @@ int main(int argc, char *argv[])
 
         switch(params.SysTestMode) {
         case 0: {
+
+            brd.syncStart();
+
             if(params.AdcDaqIntoMemory) {
                 brd.dataFromAdcToMemAsMem(params);
             } else {

@@ -109,6 +109,7 @@ public:
     bool uartTest(U8 speed, bool loopback);
     bool ltcTest();
     bool syncTest();
+    bool syncStart();
 
     U8 fpgaSerialRead();
 

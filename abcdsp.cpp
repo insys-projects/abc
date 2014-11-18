@@ -1029,22 +1029,22 @@ bool abcdsp::ltcTest()
 
 bool abcdsp::syncTest()
 {
-    //fprintf(stderr, "Press enter to start SYNC\n");
-    //getchar();
-    //for(int i=0; i<10; i++) {
-
-        //m_sync->start();
-        //fprintf(stderr, "Press enter to reconfigure and restart SYNC or Ctrl+C and than Enter to exit.\n");
-        fprintf(stderr, "Press enter to start SYNC\n");
-        getchar();
+    fprintf(stderr, "Press enter to start SYNC\n");
+    getchar();
 	m_sync->start();
-        //m_sync->reconfig("azbuka_325.ini");
-        //if(exitFlag()) {
-        //    break;
-        //}
-        fprintf(stderr, "Press enter to stop SYNC\n");
-        getchar();
-        m_sync->stop();
-    //}
+
+    fprintf(stderr, "Press enter to stop SYNC\n");
+    getchar();
+    m_sync->stop();
     return true;
 }
+
+//-----------------------------------------------------------------------------
+
+bool abcdsp::syncStart()
+{
+    m_sync->start();
+    return true;
+}
+
+//-----------------------------------------------------------------------------

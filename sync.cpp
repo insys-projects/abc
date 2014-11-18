@@ -125,37 +125,43 @@ bool abc_sync::set_param(const struct app_params_t& params)
 
 bool abc_sync::check_param(const struct app_params_t& params)
 {
-    if(params.Tcycle < params.Tdelay + params.deltaAdc) {
+    bool ok = true;
+
+    if(params.syncCycle == 0) {
+        return ok;
+    }
+
+    if(params.Tcycle < (params.Tdelay + params.deltaAdc - 2)) {
         fprintf(stderr, "%s(): Error: parameters Tdelay and deltaAdc out of range!\n", __FUNCTION__);
-        return false;
+        return ok;
     }
 
-    if(params.Tcycle < params.Tdelay + params.deltaDac) {
+    if(params.Tcycle < (params.Tdelay + params.deltaDac - 2)) {
         fprintf(stderr, "%s(): Error: parameters Tdelay and deltaDac out of range!\n", __FUNCTION__);
-        return false;
+        return ok;
     }
 
-    if(params.Tcycle < params.Tdelay + params.delta_A + params.width_A) {
+    if(params.Tcycle < (params.Tdelay + params.delta_A + params.width_A - 2)) {
         fprintf(stderr, "%s(): Error: parameters Tdelay, delta_A and width_A out of range!\n", __FUNCTION__);
-        return false;
+        return ok;
     }
 
-    if(params.Tcycle < params.Tdelay + params.delta_B + params.width_B) {
+    if(params.Tcycle < (params.Tdelay + params.delta_B + params.width_B - 2)) {
         fprintf(stderr, "%s(): Error: parameters Tdelay, delta_B and width_B out of range!\n", __FUNCTION__);
-        return false;
+        return ok;
     }
 
-    if(params.Tcycle < params.Tdelay + params.delta_C + params.width_C) {
+    if(params.Tcycle < (params.Tdelay + params.delta_C + params.width_C - 2)) {
         fprintf(stderr, "%s(): Error: parameters Tdelay, delta_C and width_C out of range!\n", __FUNCTION__);
-        return false;
+        return ok;
     }
 
-    if(params.Tcycle < params.Tdelay + params.delta_D + params.width_D) {
+    if(params.Tcycle < (params.Tdelay + params.delta_D + params.width_D - 2)) {
         fprintf(stderr, "%s(): Error: parameters Tdelay, delta_D and width_D out of range!\n", __FUNCTION__);
-        return false;
+        return ok;
     }
 
-    return true;
+    return ok;
 }
 
 //-------------------------------------------------------------------------------------
