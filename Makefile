@@ -2,23 +2,18 @@
 #change this makefile for your target...
 #
 
-BINDIR_PREFIX := /home/embedded/targetfs-c6x-abc
-
-DIRS := ../../BARDY/gipcy/include
+BINDIR_PREFIX := /home/$(USER)/targetfs-c6x-abc
+BARDY_PREFIX := ../BARDY_C6X
+DIRS := $(BARDY_PREFIX)/gipcy/include
+LIBPATH  = $(BARDY_PREFIX)/bin
 
 ifeq "$(findstring c6x-uclinux-gcc, $(CC))" "c6x-uclinux-gcc"
     OS := __LINUX__
     CSTOOL_PREFIX ?= c6x-uclinux-
     IPC := __IPC_LINUX__
     TARGET := -march=c674x
-    NCURSES  = ../../tools/ncurses-5.9-c6x/build/lib/libncurses.a
-    DIRS += ../../tools/ncurses-5.9-c6x/build/include
-    DIRS += ../../tools/ncurses-5.9-c6x/build/include/ncurses
-    LIBPATH  = ./libs_c6x
     PLATFORM := _c6x_
 else
-    NCURSES  = -lncurses
-    LIBPATH  = ./libs_x86
     PLATFORM := _x86_
 endif
 
@@ -39,10 +34,10 @@ CFLAGS += $(TARGET) -D$(PLATFORM) -D__LINUX__ -g -Wall $(INC)
 LFLAGS += $(TARGET)
 
 $(TARGET_NAME): $(patsubst %.cpp,%.o, $(wildcard *.cpp))
-	$(LD) -o $(TARGET_NAME) $^ $(LIBPATH)/libgipcy.a $(NCURSES) $(LFLAGS)
+	$(LD) -o $(TARGET_NAME) $^ $(LIBPATH)/libgipcy.a $(LFLAGS)
 ifeq "$(findstring c6x, $(CC))" "c6x"
 	c6x-uclinux-strip $(TARGET_NAME)
-	cp $(TARGET_NAME) $(BINDIR_PREFIX)/home/$(TARGETFS_USER)/azbuka
+	cp $(TARGET_NAME) $(BINDIR_PREFIX)/home/embedded/examples
 endif
 #	rm -f *.o *~ core
 
