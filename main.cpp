@@ -93,6 +93,9 @@ int main(int argc, char *argv[])
         case 3: {
             brd.syncTest();
         } break;
+        case 4: {
+            brd.dataFromAdcToMSM();
+        } break;
         }
 
     }

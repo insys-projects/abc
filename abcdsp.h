@@ -6,7 +6,6 @@
 #include "ddwambpex.h"
 #include "ctrlstrm.h"
 #include "memory.h"
-#include "nctable.h"
 #include "trdprog.h"
 #include "dac.h"
 #include "adc.h"
@@ -55,6 +54,7 @@ public:
     // DATA ADC
     void dataFromAdc(struct app_params_t& params);
     void dataFromAdcToMemAsMem(struct app_params_t& params);
+    void dataFromAdcToMSM();
 
     // EXIT
     void setExitFlag(bool exit);

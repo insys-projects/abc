@@ -286,7 +286,7 @@ void abcdsp::dataFromAdc(struct app_params_t& params)
 
     vector<void*> dmaBlocks(params.dmaBlockCount, 0);
 
-    BRDctrl_StreamCBufAlloc sSCA = {BRDstrm_DIR_IN, 1, params.dmaBlockCount, params.dmaBlockSize, dmaBlocks.data(), NULL, };
+    BRDctrl_StreamCBufAlloc sSCA = {BRDstrm_DIR_IN, params.dmaMemoryType, params.dmaBlockCount, params.dmaBlockSize, dmaBlocks.data(), NULL, };
     fprintf(stderr, "Allocate DMA memory\n");
     allocateDmaMemory(params.dmaChannel, &sSCA);
 
@@ -392,7 +392,7 @@ void abcdsp::dataFromAdcToMemAsMem(struct app_params_t& params)
 
     vector<void*> dmaBlocks(params.dmaBlockCount, 0);
 
-    BRDctrl_StreamCBufAlloc sSCA = {BRDstrm_DIR_IN, 1, params.dmaBlockCount, params.dmaBlockSize, dmaBlocks.data(), NULL, };
+    BRDctrl_StreamCBufAlloc sSCA = {BRDstrm_DIR_IN, params.dmaMemoryType, params.dmaBlockCount, params.dmaBlockSize, dmaBlocks.data(), NULL, };
     fprintf(stderr, "Allocate DMA memory\n");
     allocateDmaMemory(params.dmaChannel, &sSCA);
 
@@ -491,6 +491,135 @@ void abcdsp::dataFromAdcToMemAsMem(struct app_params_t& params)
 
 //-----------------------------------------------------------------------------
 
+void abcdsp::dataFromAdcToMSM()
+{
+    fprintf(stderr, "Start testing DMA: %d to MSM\n", m_params.dmaChannel);
+    fprintf(stderr, "DMA information:\n" );
+    infoDma();
+
+    //rewrite ini-file DMA settings on C6678 specific
+    m_params.dmaMemoryType = 8;
+    m_params.dmaBlockCount = 2;
+    m_params.dmaBlockSize = 0x100000;
+
+    vector<void*> dmaBlocks;
+
+    // MSM addresses (2 regions)
+    dmaBlocks.push_back((void*)0x0C100000);
+    dmaBlocks.push_back((void*)0x0C200000);
+
+    BRDctrl_StreamCBufAlloc sSCA = {BRDstrm_DIR_IN, m_params.dmaMemoryType, m_params.dmaBlockCount, m_params.dmaBlockSize, dmaBlocks.data(), 0};
+    fprintf(stderr, "Allocate DMA memory\n");
+    allocateDmaMemory(m_params.dmaChannel, &sSCA);
+
+    // prepare ISVI files for non masked FPGA
+    IPC_handle isviFile;
+    string flgName;
+
+    IPC_str fname[64];
+    BRDC_snprintf(fname, sizeof(fname), _BRDC("data_%d.bin"), 0);
+    isviFile = createDataFile(fname);
+
+    IPC_str tmpflg[64];
+    BRDC_snprintf(tmpflg, sizeof(tmpflg), _BRDC("data_%d.flg"), 0);
+    flgName = tmpflg;
+    createFlagFile(flgName.c_str());
+
+    string isvi_hdr;
+    createIsviHeader(isvi_hdr, 0, m_params);
+
+    // prepare and start ADC and DMA channels for non masked FPGA
+    fprintf(stderr, "Set DMA source\n");
+    setDmaSource(m_params.dmaChannel, m_adcTrd.number);
+
+    fprintf(stderr, "Set DMA direction\n");
+    setDmaDirection(m_params.dmaChannel, BRDstrm_DIR_IN);
+
+    vector<void*> localBlocks;
+
+    localBlocks.push_back(malloc(m_params.dmaBlockSize));
+    localBlocks.push_back(malloc(m_params.dmaBlockSize));
+
+    //----------------------------------------------------------------
+    m_dac->start();
+    //----------------------------------------------------------------
+
+    fprintf(stderr, "Start DMA channel\n");
+    startDma(m_params.dmaChannel, 0);
+
+    fprintf(stderr, "Start ADC\n");
+    m_adc->start();
+
+    unsigned counter = 0;
+
+    while(!exitFlag()) {
+
+        float t1 = m_ltc1->measure_own_t();
+        float t2 = m_ltc2->measure_own_t();
+        float t3 = m_ltc1->measure_differential_t(1);
+
+        // save ADC data into ISVI files for non masked FPGA
+        if( waitDmaBuffer(m_params.dmaChannel, 2000) < 0 ) {
+
+            fprintf( stderr, "ERROR TIMEOUT! ADC STATUS = 0x%.4X\n", m_adc->status());
+            break;
+
+        } else {
+
+            // copy data from DMA area to local buffer
+            memcpy(localBlocks[0], dmaBlocks.at(0), m_params.dmaBlockSize);
+            memcpy(localBlocks[1], dmaBlocks.at(1), m_params.dmaBlockSize);
+
+            // write data from local buffer to file (DMA area not can be used)
+            IPC_setPosFile(isviFile, 0, SEEK_SET);
+            IPC_writeFile(isviFile, localBlocks[0], m_params.dmaBlockSize);
+            IPC_setPosFile(isviFile, m_params.dmaBlockSize, SEEK_SET);
+            IPC_writeFile(isviFile, localBlocks[1], m_params.dmaBlockSize);
+            IPC_setPosFile(isviFile, 2*m_params.dmaBlockSize, SEEK_SET);
+            IPC_writeFile(isviFile, (void*)isvi_hdr.c_str(), isvi_hdr.size());
+            lockDataFile(flgName.c_str(), counter);
+        }
+
+        //display 1-st element of each block
+        fprintf(stderr, "%d: STATUS = 0x%.4X [", ++counter, m_adc->status());
+        for(unsigned j=0; j<dmaBlocks.size(); j++) {
+            u32* value = (u32*)dmaBlocks.at(j);
+            fprintf(stderr, " 0x%.8x ", value[0]);
+        }
+        fprintf(stderr, "] t1 = %.2f, t2 = %.2f, t3 = %.2f\r", t1, t2, t3);
+
+        m_adc->stop();
+        m_adc->reset_fifo();
+
+        stopDma(m_params.dmaChannel);
+        resetDmaFifo(m_params.dmaChannel);
+        startDma(m_params.dmaChannel,0);
+
+        m_adc->start();
+
+        if(m_params.AdcCycle)
+            continue;
+        else
+            break;
+    }
+
+    IPC_delay(1000);
+    // stop ADC and DMA channels for non masked FPGA
+    // and free DMA buffers
+    stopDma(m_params.dmaChannel);
+    m_adc->stop();
+
+    IPC_delay(10);
+
+    freeDmaMemory(m_params.dmaChannel);
+    IPC_closeFile(isviFile);
+
+    free(localBlocks[0]);
+    free(localBlocks[1]);
+}
+
+//-----------------------------------------------------------------------------
+
 void abcdsp::setExitFlag(bool exit)
 {
     m_exit = exit;
@@ -516,7 +645,7 @@ void abcdsp::dataFromMain(struct app_params_t& params)
     infoDma();
 
     vector<void*> dmaBlocks(params.dmaBlockCount, 0);
-    BRDctrl_StreamCBufAlloc sSCA = {BRDstrm_DIR_IN, 1, params.dmaBlockCount, params.dmaBlockSize, dmaBlocks.data(), NULL, };
+    BRDctrl_StreamCBufAlloc sSCA = {BRDstrm_DIR_IN, params.dmaMemoryType, params.dmaBlockCount, params.dmaBlockSize, dmaBlocks.data(), NULL, };
     fprintf(stderr, "Allocate DMA memory\n");
     allocateDmaMemory(params.dmaChannel, &sSCA);
 
@@ -616,7 +745,7 @@ void abcdsp::dataFromMainToMemAsMem(struct app_params_t& params)
 
         vector<void*> dmaBlocks(params.dmaBlockCount, 0);
 
-        BRDctrl_StreamCBufAlloc sSCA = {BRDstrm_DIR_IN, 1, params.dmaBlockCount, params.dmaBlockSize, dmaBlocks.data(), NULL, };
+        BRDctrl_StreamCBufAlloc sSCA = {BRDstrm_DIR_IN, params.dmaMemoryType, params.dmaBlockCount, params.dmaBlockSize, dmaBlocks.data(), NULL, };
         fprintf(stderr, "Allocate DMA memory\n");
         allocateDmaMemory(i, params.dmaChannel, &sSCA);
 
