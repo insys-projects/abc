@@ -90,31 +90,44 @@ int Stream::allocateDmaMemory(BRDctrl_StreamCBufAlloc* sSCA)
     m_Descr->hBlockEndEvent = 0;
 #endif
 
+    size_t align = sysconf(_SC_PAGESIZE);
     for(U32 iBlk = 0; iBlk < sSCA->blkNum; iBlk++) {
-        m_Descr->pBlock[iBlk] = NULL;
+
+        void *address = 0;
+        if(m_Descr->MemType == 0) {
+            int res = posix_memalign(&address, align, sSCA->blkSize);
+            if(res < 0) {
+                throw except_info("%s, %d: %s() - Error allocate buffer for DMA%d in posix_memalign()\n", __FILE__, __LINE__, __FUNCTION__, m_DmaChan);
+            }
+        } else if(m_Descr->MemType == 8) {
+            address = sSCA->ppBlk[iBlk];
+        }
+        m_Descr->pBlock[iBlk] = address;
     }
 
     if( IPC_ioctlDevice(m_fpgaDev, IOCTL_AMB_SET_MEMIO, m_Descr, m_DescrSize, m_Descr, m_DescrSize) < 0 ) {
         throw except_info("%s, %d: %s() - Error allocate buffer for DMA %d\n", __FILE__, __LINE__, __FUNCTION__, m_DmaChan);
     }
 
+    // map only system memory
     for(U32 iBlk = 0; iBlk < m_Descr->BlockCnt; iBlk++) {
-
-        void *MappedAddress = m_map->mapPhysicalAddress(m_Descr->pBlock[iBlk], m_Descr->BlockSize);
-        if(!MappedAddress) {
-            throw except_info("%s, %d: %s() - Error map physical address: 0x%.8x\n", __FILE__, __LINE__, __FUNCTION__, m_Descr->pBlock[iBlk]);
+        if(m_Descr->MemType != 0) {
+            void *MappedAddress = m_map->mapPhysicalAddress(m_Descr->pBlock[iBlk], m_Descr->BlockSize);
+            if(!MappedAddress) {
+                throw except_info("%s, %d: %s() - Error map physical address: 0x%.8x\n", __FILE__, __LINE__, __FUNCTION__, m_Descr->pBlock[iBlk]);
+            }
+            fprintf(stderr, "%d: %p -> %p\n", iBlk, (void*)m_Descr->pBlock[iBlk], MappedAddress);
+            m_Descr->pBlock[iBlk] = MappedAddress;
+            sSCA->ppBlk[iBlk] = MappedAddress;
+        } else {
+            sSCA->ppBlk[iBlk] = m_Descr->pBlock[iBlk];
         }
-
-        fprintf(stderr, "%d: %p -> %p\n", iBlk, (void*)m_Descr->pBlock[iBlk], MappedAddress);
-
-        m_Descr->pBlock[iBlk] = MappedAddress;
-        sSCA->ppBlk[iBlk] = MappedAddress;
     }
 
+    // and stub
     if(m_Descr->pStub) {
 
         void *StubAddress = m_map->mapPhysicalAddress(m_Descr->pStub, sizeof(BRDstrm_Stub));
-
         if(!StubAddress) {
             throw except_info("%s, %d: %s() - Error map stub: 0x%.8x\n", __FILE__, __LINE__, __FUNCTION__, m_Descr->pStub);
         }
@@ -156,26 +169,43 @@ int Stream::allocateDmaMemory(void** pBuf,
     m_Descr->hBlockEndEvent = 0;
 #endif
 
-    for(U32 iBlk = 0; iBlk < blkNum; iBlk++) {
-        m_Descr->pBlock[iBlk] = NULL;
+    size_t align = sysconf(_SC_PAGESIZE);
+    for(U32 iBlk = 0; iBlk < m_Descr->BlockCnt; iBlk++) {
+
+        void *address = 0;
+        if(m_Descr->MemType == 0) {
+            int res = posix_memalign(&address, align, m_Descr->BlockSize);
+            if(res < 0) {
+                throw except_info("%s, %d: %s() - Error allocate buffer for DMA%d in posix_memalign()\n", __FILE__, __LINE__, __FUNCTION__, m_DmaChan);
+            }
+        } else if(m_Descr->MemType == 8) {
+            address = pBuf[iBlk];
+        }
+        m_Descr->pBlock[iBlk] = address;
     }
 
     if( IPC_ioctlDevice(m_fpgaDev, IOCTL_AMB_SET_MEMIO, m_Descr, m_DescrSize, m_Descr, m_DescrSize) < 0 ) {
         throw except_info("%s, %d: %s() - Error allocate buffer for DMA %d\n", __FILE__, __LINE__, __FUNCTION__, m_DmaChan);
     }
 
+    // map only system memory
     for(U32 iBlk = 0; iBlk < m_Descr->BlockCnt; iBlk++) {
+        if(m_Descr->MemType == 1) {
+            void *MappedAddress = m_map->mapPhysicalAddress(m_Descr->pBlock[iBlk], m_Descr->BlockSize);
+            if(!MappedAddress) {
+                throw except_info("%s, %d: %s() - Error map physical address: 0x%.8x\n", __FILE__, __LINE__, __FUNCTION__, m_Descr->pBlock[iBlk]);
+            }
 
-        void *MappedAddress = m_map->mapPhysicalAddress(m_Descr->pBlock[iBlk], m_Descr->BlockSize);
-        if(!MappedAddress) {
-            throw except_info("%s, %d: %s() - Error map physical address: 0x%.8x\n", __FILE__, __LINE__, __FUNCTION__, m_Descr->pBlock[iBlk]);
+            fprintf(stderr, "%d: %p -> %p\n", iBlk, (void*)m_Descr->pBlock[iBlk], MappedAddress);
+
+            m_Descr->pBlock[iBlk] = MappedAddress;
+            pBuf[iBlk] = MappedAddress;
+
+        } else {
+            pBuf[iBlk] = m_Descr->pBlock[iBlk];
         }
-
-        fprintf(stderr, "%d: %p -> %p\n", iBlk, (void*)m_Descr->pBlock[iBlk], MappedAddress);
-
-        m_Descr->pBlock[iBlk] = MappedAddress;
-        pBuf[iBlk] = m_Descr->pBlock[iBlk];
     }
+
 
     if(m_Descr->pStub) {
 
@@ -199,6 +229,13 @@ int Stream::allocateDmaMemory(void** pBuf,
 int  Stream::freeDmaMemory()
 {
     if(m_Descr) {
+
+        if(m_Descr->MemType == 0) {
+            for(U32 iBlk = 0; iBlk < m_Descr->BlockCnt; iBlk++) {
+                free(m_Descr->pBlock[iBlk]);
+            }
+        }
+
 
 #ifdef _WIN32
         IPC_ioctlDevice(m_fpgaDev, IOCTL_AMB_FREE_MEMIO, m_Descr, m_DescrSize, 0, 0);
@@ -231,9 +268,9 @@ int  Stream::startDma(int IsCycling)
         ResetEvent(m_OvlStartStream.hEvent);
 
         int res = IPC_ioctlDeviceOvl(m_fpgaDev, IOCTL_AMB_START_MEMIO,
-                                      &StartDescrip,
-                                      sizeof(StartDescrip),0,0,
-                                      &m_OvlStartStream);
+                                     &StartDescrip,
+                                     sizeof(StartDescrip),0,0,
+                                     &m_OvlStartStream);
         return res;
 #else
         int res = IPC_ioctlDevice(m_fpgaDev,
@@ -546,8 +583,8 @@ bool Stream::writeBlock(IPC_handle file, int blockNumber)
     void *currentBlock = m_Descr->pBlock[blockNumber];
 
     int count = IPC_writeFile(file, currentBlock, m_Descr->BlockSize);
-    if(count == -1) {
-        fprintf(stderr, "Error write %d data block (%d)n", blockNumber, count);
+    if((count == (int)IPC_GENERAL_ERROR)||(count == (int)IPC_INVALID_HANDLE)) {
+        fprintf(stderr, "Error write %d data block (%d)\n", blockNumber, count);
         return false;
     }
 
