@@ -18,7 +18,7 @@
 class adc
 {
 public:
-    adc(Fpga *fpga, const struct app_params_t& params );
+    adc(Fpga *fpga, const struct app_params_t& params);
     virtual ~adc();
 
     void start();
@@ -31,6 +31,7 @@ private:
     Fpga* m_fpga;
     fpga_trd_t m_adcTrd;
     trdprog*   m_trdprog;
+    struct app_params_t m_params;
 
     void default_settings(signed AdcBias0, signed AdcBias1);
 };

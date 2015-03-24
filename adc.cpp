@@ -7,7 +7,7 @@
 
 //-------------------------------------------------------------------------------------
 
-adc::adc(Fpga *fpga, const app_params_t& params) : m_fpga(fpga), m_trdprog(0)
+adc::adc(Fpga *fpga, const app_params_t& params) : m_fpga(fpga), m_trdprog(0), m_params(params)
 {
     // Search ADC TRD
     if(!m_fpga->fpgaTrd(0, 0xB8, m_adcTrd)) {
@@ -43,6 +43,11 @@ adc::adc(Fpga *fpga, const app_params_t& params) : m_fpga(fpga), m_trdprog(0)
     // ADC default settings
     default_settings(params.AdcBias0, params.AdcBias1);
     //m_trdprog = new trdprog(m_fpga, "adc.ini");
+
+    // CNT0, CNT1, CNT2
+    m_fpga->FpgaRegPokeInd(m_adcTrd.number, 0x6, 0x0);
+    m_fpga->FpgaRegPokeInd(m_adcTrd.number, 0x7, params.AdcCnt1);
+    m_fpga->FpgaRegPokeInd(m_adcTrd.number, 0x8, 0x1);
 }
 
 //-------------------------------------------------------------------------------------
@@ -79,7 +84,10 @@ void adc::default_settings(signed AdcBias0, signed AdcBias1)
 
 void adc::start()
 {
-    m_fpga->FpgaRegPokeInd(m_adcTrd.number, 0x0, 0x2038);
+    unsigned bit = m_params.AdcEnableCnt;
+    m_fpga->FpgaRegPokeInd(m_adcTrd.number, 0x0, 0x2038 | (bit << 9) | (bit << 10));
+    //fprintf(stderr, "%s(): MODE0 = 0x%.4X\n", __FUNCTION__, m_fpga->FpgaRegPeekInd(m_adcTrd.number, 0x0));
+    //fprintf(stderr, "%s(): STMODE = 0x%.4X\n", __FUNCTION__, m_fpga->FpgaRegPeekInd(m_adcTrd.number, 0x5));
 }
 
 //-------------------------------------------------------------------------------------
