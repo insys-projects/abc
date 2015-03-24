@@ -24,6 +24,8 @@ struct app_params_t {
     unsigned AdcStartMode;
     unsigned AdcStopSource;
     unsigned AdcStopInverting;
+    unsigned AdcEnableCnt;
+    unsigned AdcCnt1;
 
     unsigned DacCycle;
     unsigned DacTest;
@@ -43,6 +45,7 @@ struct app_params_t {
     unsigned dmaBlockSize;
     unsigned dmaBlockCount;
     unsigned dmaBuffersCount;
+    unsigned dmaMemoryType;
 
     unsigned syncCycle;
     unsigned Tcycle;

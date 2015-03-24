@@ -133,6 +133,18 @@ bool getParams(int argc, char *argv[], struct app_params_t& param)
     }
     param.AdcStopInverting = BRDC_strtol(Buffer,0,10);
 
+    res = IPC_getPrivateProfileString(SECTION_NAME, _BRDC("AdcEnableCnt"), _BRDC("0"), Buffer, sizeof(Buffer), iniFilePath);
+    if(!res) {
+        fprintf(stderr, "Parameter: AdcEnableCnt - not found. Use default value\n");
+    }
+    param.AdcEnableCnt = BRDC_strtol(Buffer,0,10);
+
+    res = IPC_getPrivateProfileString(SECTION_NAME, _BRDC("AdcCnt1"), _BRDC("0"), Buffer, sizeof(Buffer), iniFilePath);
+    if(!res) {
+        fprintf(stderr, "Parameter: AdcCnt1 - not found. Use default value\n");
+    }
+    param.AdcCnt1 = BRDC_strtol(Buffer,0,10);
+
     //================================================
 
     res = IPC_getPrivateProfileString(SECTION_NAME, _BRDC("DacCycle"), _BRDC("0"), Buffer, sizeof(Buffer), iniFilePath);
@@ -232,6 +244,12 @@ bool getParams(int argc, char *argv[], struct app_params_t& param)
         fprintf(stderr, "Parameter: dmaBuffersCount - not found. Use default value\n");
     }
     param.dmaBuffersCount = BRDC_strtol(Buffer,0,10);
+
+    res = IPC_getPrivateProfileString(SECTION_NAME, _BRDC("dmaMemoryType"), _BRDC("1"), Buffer, sizeof(Buffer), iniFilePath);
+    if(!res) {
+        fprintf(stderr, "Parameter: dmaMemoryType - not found. Use default value\n");
+    }
+    param.dmaMemoryType = BRDC_strtol(Buffer,0,10);
 
     //================================================
 
@@ -338,6 +356,8 @@ void showParams(struct app_params_t& param)
     fprintf(stderr, "AdcStartMode:              %d\n", param.AdcStartMode);
     fprintf(stderr, "AdcStopSource:             %d\n", param.AdcStopSource);
     fprintf(stderr, "AdcStopInverting:          %d\n", param.AdcStopInverting);
+    fprintf(stderr, "AdcEnableCnt:              %d\n", param.AdcEnableCnt);
+    fprintf(stderr, "AdcCnt1:                   %d\n", param.AdcCnt1);
     fprintf(stderr, " \n");
     fprintf(stderr, "DacCycle:                  %d\n", param.DacCycle);
     fprintf(stderr, "DacTest:                   %d\n", param.DacTest);
@@ -356,6 +376,7 @@ void showParams(struct app_params_t& param)
     fprintf(stderr, "dmaBlockSize:              0x%x\n", param.dmaBlockSize);
     fprintf(stderr, "dmaBlockCount:             0x%x\n", param.dmaBlockCount);
     fprintf(stderr, "dmaBuffersCount:           0x%x\n", param.dmaBuffersCount);
+    fprintf(stderr, "dmaMemoryType:             0x%x\n", param.dmaMemoryType);
     fprintf(stderr, " \n");
     fprintf(stderr, "syncCycle:                 0x%x\n", param.syncCycle);
     fprintf(stderr, "Tcycle:                    0x%x\n", param.Tcycle);
